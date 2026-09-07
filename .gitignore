@@ -1,0 +1,5 @@
+# Environment variables (local secrets)
+**/node_modules/
+.env
+.env.local
+.env.*.local

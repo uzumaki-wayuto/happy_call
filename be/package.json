@@ -1,0 +1,29 @@
+{
+    "name": "happy-call-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "nodemon server.js",
+        "start": "node server.js",
+        "seed": "node seed.js"
+    },
+    "dependencies": {
+        "asterisk-manager": "^0.2.0",
+        "bcrypt": "^6.0.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.0.3",
+        "express": "^4.22.2",
+        "express-rate-limit": "^6.7.0",
+        "helmet": "^7.0.0",
+        "jsonwebtoken": "^9.0.0",
+        "mssql": "^9.3.2",
+        "socket.io": "^4.6.1",
+        "winston": "^3.9.0"
+    },
+    "devDependencies": {
+        "nodemon": "^2.0.22"
+    },
+    "description": "",
+    "main": "index.js",
+    "keywords": []
+}
