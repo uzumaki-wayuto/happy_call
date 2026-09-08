@@ -16,10 +16,10 @@ import {
   message,
   Badge,
 } from 'antd';
-import { 
-  PhoneOutlined, 
-  CopyOutlined, 
-  CloseOutlined, 
+import {
+  PhoneOutlined,
+  CopyOutlined,
+  CloseOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   ClockCircleOutlined,
@@ -45,7 +45,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
     callEndTime: null,
     isCallActive: false,
   });
-  
+
   const [callTimer, setCallTimer] = useState(0);
   const timerInterval = useRef(null);
   const [callStatusMessages, setCallStatusMessages] = useState([]);
@@ -75,11 +75,11 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
     // ============ PBX STATUS ============
     const handlePBXStatus = (data) => {
       if (!mountedRef.current) return;
-      setCallState(prev => ({ 
-        ...prev, 
-        pbxConnected: data.connected || false 
+      setCallState((prev) => ({
+        ...prev,
+        pbxConnected: data.connected || false,
       }));
-      
+
       if (!data.connected) {
         message.warning('PBX is not connected. Please use Manual Dial.');
       }
@@ -90,17 +90,20 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.log('📞 Call started for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'dialing',
           callId: data.callId,
           callStartTime: new Date(),
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: '📞 Initiating call...',
-          type: 'info'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: '📞 Initiating call...',
+            type: 'info',
+          },
+        ]);
       }
     };
 
@@ -108,15 +111,18 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.log('📞 Call ringing for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'ringing',
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: '🔔 Ringing... Customer phone is ringing',
-          type: 'info'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: '🔔 Ringing... Customer phone is ringing',
+            type: 'info',
+          },
+        ]);
       }
     };
 
@@ -124,19 +130,22 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.log('📞 Call connected for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'connected',
           isCallActive: true,
           callStartTime: new Date(),
           duration: 0,
         }));
         setCallTimer(0);
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: '🟢 Call connected! Customer is on the line.',
-          type: 'success'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: '🟢 Call connected! Customer is on the line.',
+            type: 'success',
+          },
+        ]);
         message.success('Call connected!');
       }
     };
@@ -145,18 +154,21 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.log('📞 Call ended for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'ended',
           isCallActive: false,
           duration: data.duration || prev.duration,
           callEndTime: new Date(),
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: `⏹️ Call ended. Duration: ${formatDuration(data.duration || 0)}`,
-          type: 'info'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: `⏹️ Call ended. Duration: ${formatDuration(data.duration || 0)}`,
+            type: 'info',
+          },
+        ]);
         message.info(`Call ended after ${data.duration || 0}s`);
         stopCallTimer();
       }
@@ -166,16 +178,19 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.log('❌ Call failed for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'failed',
           isCallActive: false,
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: `❌ Call failed: ${data.reason || 'Unknown error'}`,
-          type: 'error'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: `❌ Call failed: ${data.reason || 'Unknown error'}`,
+            type: 'error',
+          },
+        ]);
         message.error(`Call failed: ${data.reason || 'Unknown error'}`);
         stopCallTimer();
       }
@@ -185,16 +200,19 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       if (!mountedRef.current) return;
       if (data.taskId === task.id) {
         console.error('❌ Call error for this task:', data);
-        setCallState(prev => ({ 
-          ...prev, 
+        setCallState((prev) => ({
+          ...prev,
           status: 'failed',
           isCallActive: false,
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: `❌ Error: ${data.message || 'Unknown error'}`,
-          type: 'error'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: `❌ Error: ${data.message || 'Unknown error'}`,
+            type: 'error',
+          },
+        ]);
         message.error(`Call error: ${data.message || 'Unknown error'}`);
         stopCallTimer();
       }
@@ -239,7 +257,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
   const startCallTimer = () => {
     if (timerInterval.current) return;
     timerInterval.current = setInterval(() => {
-      setCallTimer(prev => prev + 1);
+      setCallTimer((prev) => prev + 1);
     }, 1000);
   };
 
@@ -269,7 +287,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       return;
     }
 
-    setCallState(prev => ({ ...prev, status: 'dialing' }));
+    setCallState((prev) => ({ ...prev, status: 'dialing' }));
     setCallStatusMessages([]);
 
     try {
@@ -281,29 +299,35 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       });
 
       if (response.data?.success) {
-        setCallState(prev => ({
+        setCallState((prev) => ({
           ...prev,
           callId: response.data.callId,
         }));
-        setCallStatusMessages(prev => [...prev, {
-          time: new Date(),
-          message: '📞 Call initiated. Waiting for connection...',
-          type: 'info'
-        }]);
+        setCallStatusMessages((prev) => [
+          ...prev,
+          {
+            time: new Date(),
+            message: '📞 Call initiated. Waiting for connection...',
+            type: 'info',
+          },
+        ]);
       } else {
         throw new Error(response.data?.message || 'Call failed to initiate');
       }
     } catch (error) {
       console.error('Click-to-Call error:', error);
-      setCallState(prev => ({ 
-        ...prev, 
+      setCallState((prev) => ({
+        ...prev,
         status: 'failed',
       }));
-      setCallStatusMessages(prev => [...prev, {
-        time: new Date(),
-        message: `❌ Error: ${error.message}`,
-        type: 'error'
-      }]);
+      setCallStatusMessages((prev) => [
+        ...prev,
+        {
+          time: new Date(),
+          message: `❌ Error: ${error.message}`,
+          type: 'error',
+        },
+      ]);
       message.error(error.message || 'Failed to make call');
     }
   };
@@ -323,6 +347,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
         return;
       }
 
+      // ✅ Build payload with all required fields
       const payload = {
         taskId: task.id,
         agentId: user?.id,
@@ -330,19 +355,83 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
         result: result,
         callId: callId,
         duration: callTimer || duration,
-        ...values,
+        notes: values.notes || '',
+        disputeReason: values.disputeReason || null,
+        noContactReason: values.noContactReason || null,
+        manualReason: values.manualReason || null,
+        manualReasonDetail: values.manualReasonDetail || null,
       };
 
-      console.log('📤 Saving attempt:', payload);
-      await onSave(payload);
-      
-      // Reset state after save
-      resetCallState();
+      console.log('📤 Saving attempt payload:', payload);
+      // ✅ Call the API
+      const response = await taskApi.saveAttempt(payload);
+
+      if (response.data) {
+        message.success('Call attempt saved successfully!');
+
+        // ✅ If result is NO_CONTACT, ask if user wants to schedule callback
+        if (result === 'NO_CONTACT') {
+          const shouldSchedule = await showCallbackModal();
+          if (shouldSchedule) {
+            // Open callback modal
+            openCallbackModal(task, values);
+          }
+        }
+
+        // Reset state after save
+        resetCallState();
+        onSave(payload);
+      }
     } catch (error) {
-      console.error('Error saving:', error);
-      message.error('Failed to save call attempt');
+      console.error('Error saving attempt:', error);
+      message.error(error.response?.data?.error || 'Failed to save call attempt');
     }
   };
+
+  // ============ CALLBACK MODAL ============
+  const showCallbackModal = () => {
+    return new Promise((resolve) => {
+      Modal.confirm({
+        title: 'Schedule Callback',
+        content: (
+          <div>
+            <p>Would you like to schedule a callback for this customer?</p>
+            <Form layout="vertical">
+              <Form.Item label="Callback Date">
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="Callback Time">
+                <TimePicker style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="Reason">
+                <Input.TextArea rows={2} placeholder="Reason for callback..." />
+              </Form.Item>
+            </Form>
+          </div>
+        ),
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  };
+
+  // ============ CALLBACK SECTION ============
+  {
+    result === 'NO_CONTACT' && (
+      <Alert
+        message="💡 Schedule Callback"
+        description="This customer couldn't be reached. Would you like to schedule a callback?"
+        type="info"
+        showIcon
+        action={
+          <Button size="small" type="primary" onClick={() => openCallbackModal(task)}>
+            Schedule
+          </Button>
+        }
+        style={{ marginTop: 8 }}
+      />
+    );
+  }
 
   // ============ RESET STATE ============
   const resetCallState = () => {
@@ -386,10 +475,18 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       return { icon: <PhoneOutlined spin />, text: 'Ringing...', color: 'processing' };
     }
     if (status === 'connected') {
-      return { icon: <CheckCircleOutlined />, text: `Connected ${formatDuration(callTimer)}`, color: 'success' };
+      return {
+        icon: <CheckCircleOutlined />,
+        text: `Connected ${formatDuration(callTimer)}`,
+        color: 'success',
+      };
     }
     if (status === 'ended') {
-      return { icon: <CheckCircleOutlined />, text: `Call ended (${formatDuration(callTimer)})`, color: 'default' };
+      return {
+        icon: <CheckCircleOutlined />,
+        text: `Call ended (${formatDuration(callTimer)})`,
+        color: 'default',
+      };
     }
     if (status === 'failed') {
       return { icon: <ExclamationCircleOutlined />, text: 'Call failed', color: 'error' };
@@ -419,26 +516,28 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
       closable={false}
       style={{ paddingBottom: 50 }}
       footer={
-        <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          gap: '8px',
-          padding: '16px 24px',
-          background: '#fff',
-          borderTop: '1px solid #f0f0f0',
-          position: 'sticky',
-          bottom: 0,
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            padding: '16px 24px',
+            background: '#fff',
+            borderTop: '1px solid #f0f0f0',
+            position: 'sticky',
+            bottom: 0,
+          }}
+        >
           <Button onClick={handleClose}>Cancel</Button>
-          <Button 
-            type="primary" 
+          <Button
+            type="primary"
             onClick={() => form.submit()}
             disabled={!result || (method === 'CLICK_TO_CALL' && status === 'idle')}
           >
             Save & Close
           </Button>
-          <Button 
-            type="primary" 
+          <Button
+            type="primary"
             onClick={() => form.submit()}
             disabled={!result || (method === 'CLICK_TO_CALL' && status === 'idle')}
           >
@@ -447,12 +546,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
         </div>
       }
     >
-      <Form 
-        form={form} 
-        layout="vertical" 
-        onFinish={handleSave}
-        disabled={isReadOnly}
-      >
+      <Form form={form} layout="vertical" onFinish={handleSave} disabled={isReadOnly}>
         {/* ============ PBX STATUS BANNER ============ */}
         <Alert
           message={pbxConnected ? '✅ PBX Connected' : '⚠️ PBX Disconnected'}
@@ -468,13 +562,20 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
           <Descriptions column={2} size="small">
             <Descriptions.Item label="Name">{task.customerName}</Descriptions.Item>
             <Descriptions.Item label="Phone">
-              {task.phone} 
-              <Button type="link" icon={<CopyOutlined />} size="small" onClick={() => {
-                navigator.clipboard.writeText(task.phone);
-                message.success('Phone number copied!');
-              }} />
+              {task.phone}
+              <Button
+                type="link"
+                icon={<CopyOutlined />}
+                size="small"
+                onClick={() => {
+                  navigator.clipboard.writeText(task.phone);
+                  message.success('Phone number copied!');
+                }}
+              />
             </Descriptions.Item>
-            <Descriptions.Item label="Loan Amount">₱{task.amount?.toLocaleString() || 0}</Descriptions.Item>
+            <Descriptions.Item label="Loan Amount">
+              ₱{task.amount?.toLocaleString() || 0}
+            </Descriptions.Item>
             <Descriptions.Item label="Type">
               <Tag color={task.type === 'DISBURSEMENT' ? 'blue' : 'green'}>
                 {task.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit'}
@@ -485,7 +586,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
 
         {/* ============ CALL ACTION ============ */}
         <Divider orientation="left">Call Action</Divider>
-        
+
         <Form.Item name="callMethod" label="Dialing Method">
           <Radio.Group
             value={method}
@@ -499,16 +600,20 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
         </Form.Item>
 
         {/* ============ CALL STATUS BAR ============ */}
-        <div style={{ 
-          background: status === 'connected' ? '#f6ffed' : '#fafafa',
-          padding: 12, 
-          borderRadius: 8, 
-          marginBottom: 16,
-          border: `1px solid ${status === 'connected' ? '#b7eb8f' : '#e8e8e8'}`,
-        }}>
+        <div
+          style={{
+            background: status === 'connected' ? '#f6ffed' : '#fafafa',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+            border: `1px solid ${status === 'connected' ? '#b7eb8f' : '#e8e8e8'}`,
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Badge 
-              status={status === 'connected' ? 'success' : status === 'idle' ? 'default' : 'processing'} 
+            <Badge
+              status={
+                status === 'connected' ? 'success' : status === 'idle' ? 'default' : 'processing'
+              }
               text={
                 <span style={{ fontWeight: 500 }}>
                   {callStatusDisplay.icon} {callStatusDisplay.text}
@@ -527,7 +632,13 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
               size="large"
               block
               onClick={executeClickToCall}
-              disabled={isCallActive || status === 'ended' || status === 'failed' || !pbxConnected || isReadOnly}
+              disabled={
+                isCallActive ||
+                status === 'ended' ||
+                status === 'failed' ||
+                !pbxConnected ||
+                isReadOnly
+              }
               loading={status === 'dialing' || status === 'ringing'}
               style={{
                 background: status === 'connected' ? '#52c41a' : undefined,
@@ -541,17 +652,26 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
               {status === 'ended' && '⏹️ Call Ended'}
               {status === 'failed' && '❌ Call Failed - Retry'}
             </Button>
-            
+
             {/* Call status messages */}
             {callStatusMessages.length > 0 && (
               <div style={{ marginTop: 8, maxHeight: 80, overflow: 'auto' }}>
                 {callStatusMessages.map((msg, idx) => (
-                  <div key={idx} style={{ 
-                    fontSize: 12, 
-                    color: msg.type === 'error' ? '#ff4d4f' : msg.type === 'success' ? '#52c41a' : '#666',
-                    padding: '2px 0',
-                    borderBottom: idx < callStatusMessages.length - 1 ? '1px solid #f0f0f0' : 'none',
-                  }}>
+                  <div
+                    key={idx}
+                    style={{
+                      fontSize: 12,
+                      color:
+                        msg.type === 'error'
+                          ? '#ff4d4f'
+                          : msg.type === 'success'
+                            ? '#52c41a'
+                            : '#666',
+                      padding: '2px 0',
+                      borderBottom:
+                        idx < callStatusMessages.length - 1 ? '1px solid #f0f0f0' : 'none',
+                    }}
+                  >
                     {msg.message}
                   </div>
                 ))}
@@ -595,7 +715,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
 
         {/* ============ VERIFICATION RESULT ============ */}
         <Divider orientation="left">Verification Result</Divider>
-        
+
         <Form.Item
           name="result"
           label="Call Result *"

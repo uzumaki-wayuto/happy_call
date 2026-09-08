@@ -87,7 +87,7 @@ const CallHistory = () => {
     setFilteredData(data);
   };
 
-   // Trigger filter when any filter changes
+  // Trigger filter when any filter changes
   useEffect(() => {
     applyFilters();
   }, [searchText, typeFilter, resultFilter, dateRange, history]);
@@ -97,17 +97,30 @@ const CallHistory = () => {
     setIsModalOpen(true);
   };
 
-
-// ✅ Fetch history from API
+  // ✅ Fetch history from API
   const fetchHistory = async () => {
     if (!user?.id) return;
     setLoading(true);
     try {
       const response = await attemptApi.getMyAttempts(user.id, { limit: 1000 });
       const data = response.data || [];
-      const myAttempts = data.filter(a => a.agentId === user.id || !a.agentId);
-      setHistory(myAttempts);
-      setFilteredData(myAttempts);
+       // Map the data to include all required fields
+    const mappedData = data.map(item => ({
+      id: item.id || item.attempt_id,
+      loanId: item.loanId || item.loan_id,
+      customerName: item.customerName || item.customer_name,
+      phone: item.phone || item.customer_phone,
+      type: item.type || item.task_type,
+      agentName: item.agentName || item.agent || user?.fullName,
+      method: item.callMethod || item.call_method || 'CLICK_TO_CALL',
+      result: item.result,
+      duration: item.duration || item.duration_sec || 0,
+      notes: item.notes || '',
+      timestamp: item.timestamp || item.createdAt || new Date().toISOString(),
+      createdAt: item.createdAt || item.created_at,
+    }));
+      setHistory(mappedData);
+      setFilteredData(mappedData);
     } catch (error) {
       console.error('Error fetching history:', error);
       message.error('Failed to load call history');
@@ -116,12 +129,9 @@ const CallHistory = () => {
     }
   };
 
-
- useEffect(() => {
+  useEffect(() => {
     fetchHistory();
   }, [user]);
-
-
 
   const columns = [
     {
@@ -155,10 +165,14 @@ const CallHistory = () => {
       ),
     },
     {
-      title: 'Agent',
-      dataIndex: 'agent',
-      key: 'agent',
+      title: 'Agent', // ✅ This will now show the agent name
+      dataIndex: 'agentName', // ✅ Changed from 'agent' to 'agentName'
+      key: 'agentName',
       width: 140,
+      render: (text, record) => {
+    // Fallback to agent, then fullName, then user's name, then 'Unknown'
+    return text || record.agent || record.fullName || user?.fullName || 'Unknown';
+  },
     },
     {
       title: 'Method',
@@ -193,12 +207,7 @@ const CallHistory = () => {
       key: 'action',
       width: 80,
       render: (_, record) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => handleView(record)}
-          size="small"
-        >
+        <Button type="link" icon={<EyeOutlined />} onClick={() => handleView(record)} size="small">
           View
         </Button>
       ),
@@ -206,7 +215,7 @@ const CallHistory = () => {
   ];
 
   return (
-    <div> 
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2>Call History</h2>
         <Space>
@@ -274,7 +283,9 @@ const CallHistory = () => {
               <Title level={5}>Customer & Loan Info</Title>
               <Descriptions column={2} size="small" bordered>
                 <Descriptions.Item label="Loan ID">{selectedRecord.loanId}</Descriptions.Item>
-                <Descriptions.Item label="Customer">{selectedRecord.customerName}</Descriptions.Item>
+                <Descriptions.Item label="Customer">
+                  {selectedRecord.customerName}
+                </Descriptions.Item>
                 <Descriptions.Item label="Phone">{selectedRecord.phone}</Descriptions.Item>
                 <Descriptions.Item label="Type">
                   <Tag color={typeColorMap[selectedRecord.type] || 'default'}>

@@ -2,11 +2,8 @@
 import { getConnection } from '../config/db.js';
 
 export const dashboardService = {
-
     // ============ ADMIN DASHBOARD ============
     getAdminStats: async() => {
-        const pool = await getConnection();
-
         // Get user counts
         try {
             const pool = await getConnection();
@@ -34,56 +31,72 @@ export const dashboardService = {
             // Get today's calls
             // Get today's date
             const today = new Date().toISOString().slice(0, 10);
-
             // Get yesterday's date
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-            const callsResult = await pool.request()
-                .input('today', today)
+            const todayCallsResult = await pool.request().input('today', today)
                 .query(`
                 SELECT 
                     COUNT(*) as todayCalls,
-                    SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as called,
-                    SUM(CASE WHEN status IN ('DISPUTED', 'ESCALATED') THEN 1 ELSE 0 END) as exceptions
-                FROM VERIFICATION_TASKS
+                    SUM(CASE WHEN result = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmedCalls,
+                   SUM(CASE WHEN result = 'DISPUTED' THEN 1 ELSE 0 END) as disputedCalls,
+                    SUM(CASE WHEN result = 'NO_CONTACT' THEN 1 ELSE 0 END) as noContactCalls
+                FROM CALL_ATTEMPTS
                 WHERE CAST(created_at AS DATE) = @today
             `);
             // ✅ NEW: Get yesterday's calls
-            const yesterdayCallsResult = await pool.request()
-                .input('yesterday', yesterdayStr)
-                .query(`
+            const yesterdayCallsResult = await pool
+                .request()
+                .input('yesterday', yesterdayStr).query(`
                 SELECT COUNT(*) as yesterdayCalls
-                FROM VERIFICATION_TASKS
+                FROM CALL_ATTEMPTS
                 WHERE CAST(created_at AS DATE) = @yesterday
             `);
 
             // Get total loans
-            const loansResult = await pool.request().query(`
+            const taskResult = await pool.request().query(`
             SELECT 
                 COUNT(*) as totalLoans,
-                SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END) as remaining
+                SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completedTasks,
+                SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END) as remainingTasks,
+                SUM(CASE WHEN status = 'DISPUTED' THEN 1 ELSE 0 END) as disputedTasks,
+                SUM(CASE WHEN status = 'ESCALATED' THEN 1 ELSE 0 END) as escalatedTasks,
+                SUM(CASE WHEN status = 'NO_CONTACT' THEN 1 ELSE 0 END) as noContactTasks,
+                SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) as closed
             FROM VERIFICATION_TASKS
             WHERE status NOT IN ('CLOSED')
         `);
 
             const users = userResult.recordset[0] || {};
             const campaigns = campaignResult.recordset[0] || {};
-            const calls = callsResult.recordset[0] || {};
+            const todayCalls = todayCallsResult.recordset[0] || {};
             const yesterdayCalls = yesterdayCallsResult.recordset[0] || {};
-            const loans = loansResult.recordset[0] || {};
+            const tasks = taskResult.recordset[0] || {};
 
+            // ✅ Calculate remaining properly
+            const totalVerifications = tasks.totalLoans || 0;
+            const completed = tasks.completedTasks || 0;
+            const disputed = tasks.disputedTasks || 0;
+            const escalated = tasks.escalatedTasks || 0;
+            const noContact = tasks.noContactTasks || 0;
+            const remaining = tasks.remainingTasks || 0;
+            // 🔴 TOTAL EXCEPTIONS = Disputed Tasks + Escalated Tasks
+            // (Customer disputes + System escalations)
+            const exceptions = disputed + escalated;
 
-            // ✅ Calculate percentage change properly
-            const todayCalls = calls.todayCalls || 0;
-            const yesterdayCallsValue = yesterdayCalls.yesterdayCalls || 0;
+            // 📊 TODAY'S EXCEPTIONS = Disputed Calls Today
+            const todayDisputes = todayCalls.disputedCalls || 0;
+            // Calculate percentage change
+            const todayCallsCount = todayCalls.todayCalls || 0;
+            const yesterdayCallsCount = yesterdayCalls.yesterdayCalls || 0;
 
             let percentageChange = 0;
-            if (yesterdayCallsValue > 0) {
-                percentageChange = ((todayCalls - yesterdayCallsValue) / yesterdayCallsValue) * 100;
-            } else if (todayCalls > 0 && yesterdayCallsValue === 0) {
+            if (yesterdayCallsCount > 0) {
+                percentageChange =
+                    ((todayCallsCount - yesterdayCallsCount) / yesterdayCallsCount) * 100;
+            } else if (todayCallsCount > 0 && yesterdayCallsCount === 0) {
                 percentageChange = 100; // Infinite growth from zero
             }
             // Round to 1 decimal place
@@ -92,10 +105,15 @@ export const dashboardService = {
             console.log('📊 Admin Stats:', {
                 users,
                 campaigns,
-                calls,
-                yesterdayCalls: yesterdayCallsValue,
+                todayCalls: { todayCallsCount, ...todayCalls },
+                yesterdayCalls: yesterdayCallsCount,
+                tasks: {
+                    totalVerifications,
+                    completed,
+                    exceptions,
+                    remaining: tasks.remaining,
+                },
                 percentageChange,
-                loans
             });
 
             return {
@@ -103,17 +121,29 @@ export const dashboardService = {
                 agents: users.agents || 0,
                 supervisors: users.supervisors || 0,
                 admins: users.admins || 0,
+
                 activeCampaigns: campaigns.activeCampaigns || 0,
                 campaignLoans: campaigns.campaignLoans || 0,
-                todayCalls: calls.todayCalls || 0,
-                yesterdayCalls: yesterdayCallsValue, // ✅ Now included
-                called: calls.completed || 0,
-                exceptions: calls.exceptions || 0,
-                totalLoans: loans.totalLoans || 0,
-                completed: loans.completed || 0,
-                remaining: loans.remaining || 0,
-                completionRate: loans.totalLoans > 0 ? ((loans.completed / loans.totalLoans) * 100).toFixed(1) : 0,
-                percentageChange: percentageChange, // ✅ Now calculated properly
+
+                todayCalls: todayCalls.todayCalls || 0,
+                confirmedCallsToday: todayCalls.confirmedCalls || 0,
+                disputedCallsToday: todayDisputes,
+                noContactCallsToday: todayCalls.noContactCalls || 0,
+                yesterdayCalls: yesterdayCallsCount,
+                percentageChange: percentageChange,
+
+                // Verification stats (from VERIFICATION_TASKS - CURRENT STATUS)
+                totalVerifications: totalVerifications,
+                completed: completed,
+                remaining: remaining,
+                // ✅ EXCEPTIONS = ONLY from VERIFICATION_TASKS (current status)
+                exceptions: exceptions,
+                disputedTasks: tasks.disputedTasks || 0,
+                escalatedTasks: tasks.escalatedTasks || 0,
+                noContactTasks: tasks.noContactTasks || 0,
+
+                completionRate: totalVerifications > 0 ?
+                    ((completed / totalVerifications) * 100).toFixed(1) : 0,
             };
         } catch (error) {
             console.error('Error in getAdminStats:', error);
@@ -126,13 +156,19 @@ export const dashboardService = {
                 activeCampaigns: 0,
                 campaignLoans: 0,
                 todayCalls: 0,
-                yesterdayCalls: 0, // ✅ Added
+                confirmedCallsToday: 0,
+                disputedCallsToday: 0,
+                noContactCallsToday: 0,
+                yesterdayCalls: 0,
+                percentageChange: 0,
+                totalVerifications: 0,
                 completed: 0,
-                exceptions: 0,
-                totalLoans: 0,
                 remaining: 0,
+                exceptions: 0,
+                disputedTasks: 0,
+                escalatedTasks: 0,
+                noContactTasks: 0,
                 completionRate: 0,
-                percentageChange: 0, // ✅ Now 0 instead of 5.2
             };
         }
     },
@@ -153,7 +189,8 @@ export const dashboardService = {
             const stats = result.recordset[0] || {};
             return {
                 ...stats,
-                completionRate: stats.totalAssigned > 0 ? ((stats.completed / stats.totalAssigned) * 100).toFixed(1) : 0,
+                completionRate: stats.totalAssigned > 0 ?
+                    ((stats.completed / stats.totalAssigned) * 100).toFixed(1) : 0,
             };
         } catch (error) {
             console.error('Error in getSupervisorStats:', error);
@@ -170,9 +207,7 @@ export const dashboardService = {
     getAgentStats: async(agentId) => {
         try {
             const pool = await getConnection();
-            const result = await pool.request()
-                .input('agentId', agentId)
-                .query(`
+            const result = await pool.request().input('agentId', agentId).query(`
                     SELECT 
                         COUNT(*) as todayQueue,
                         SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completed,
@@ -186,7 +221,8 @@ export const dashboardService = {
             const stats = result.recordset[0] || {};
             return {
                 ...stats,
-                completionRate: stats.todayQueue > 0 ? ((stats.completed / stats.todayQueue) * 100).toFixed(1) : 0,
+                completionRate: stats.todayQueue > 0 ?
+                    ((stats.completed / stats.todayQueue) * 100).toFixed(1) : 0,
             };
         } catch (error) {
             console.error('Error in getAgentStats:', error);
@@ -229,7 +265,6 @@ export const dashboardService = {
                     { name: ' --- Division', completionRate: 0.0 },
                 ];
             }
-
             return result.recordset;
         } catch (error) {
             console.log('Error fetching branches, using fallback:', error.message);
@@ -262,23 +297,40 @@ export const dashboardService = {
             console.log('📊 Notices query result:', result.recordset);
 
             if (result.recordset.length === 0) {
-                return [
-                    { type: 'info', message: 'System is running normally', date: new Date().toISOString().slice(0, 10) },
-                    { type: 'success', message: 'Welcome to Happy Call System', date: new Date().toISOString().slice(0, 10) },
+                return [{
+                        type: 'info',
+                        message: 'System is running normally',
+                        date: new Date().toISOString().slice(0, 10),
+                    },
+                    {
+                        type: 'success',
+                        message: 'Welcome to Happy Call System',
+                        date: new Date().toISOString().slice(0, 10),
+                    },
                 ];
             }
 
             return result.recordset;
         } catch (error) {
             console.log('ℹ️ Error fetching notices, using fallback:', error.message);
-            return [
-                { type: 'info', message: 'System is running normally', date: new Date().toISOString().slice(0, 10) },
-                { type: 'success', message: 'Welcome to Happy Call System', date: new Date().toISOString().slice(0, 10) },
-                { type: 'warning', message: 'Everything running flawlessly, but This is fall back, so something wrong', date: new Date().toISOString().slice(0, 10) },
+            return [{
+                    type: 'info',
+                    message: 'System is running normally',
+                    date: new Date().toISOString().slice(0, 10),
+                },
+                {
+                    type: 'success',
+                    message: 'Welcome to Happy Call System',
+                    date: new Date().toISOString().slice(0, 10),
+                },
+                {
+                    type: 'warning',
+                    message: 'Everything running flawlessly, but This is fall back, so something wrong',
+                    date: new Date().toISOString().slice(0, 10),
+                },
             ];
         }
     },
-
 
     // ============ EXCEPTION BY TYPE ============
     getExceptionByType: async() => {
@@ -303,7 +355,7 @@ export const dashboardService = {
             }
 
             const total = result.recordset.reduce((sum, r) => sum + r.value, 0);
-            return result.recordset.map(r => ({
+            return result.recordset.map((r) => ({
                 ...r,
                 percent: total > 0 ? (r.value / total) * 100 : 0,
             }));
@@ -336,20 +388,57 @@ export const dashboardService = {
             `);
 
             if (result.recordset.length === 0) {
-                return [
-                    { id: 1, time: '09:15', customer: 'John Dela Cruz', loanId: 'LN-2026-00123', reason: 'Amount Mismatch' },
-                    { id: 2, time: '08:45', customer: 'Maria Santos', loanId: 'LN-2026-00456', reason: 'Not Received' },
-                    { id: 3, time: '08:20', customer: 'Jose Rizal', loanId: 'LN-2026-00789', reason: 'Other' },
+                return [{
+                        id: 1,
+                        time: '09:15',
+                        customer: 'John Dela Cruz',
+                        loanId: 'LN-2026-00123',
+                        reason: 'Amount Mismatch',
+                    },
+                    {
+                        id: 2,
+                        time: '08:45',
+                        customer: 'Maria Santos',
+                        loanId: 'LN-2026-00456',
+                        reason: 'Not Received',
+                    },
+                    {
+                        id: 3,
+                        time: '08:20',
+                        customer: 'Jose Rizal',
+                        loanId: 'LN-2026-00789',
+                        reason: 'Other',
+                    },
                 ];
             }
 
             return result.recordset;
         } catch (error) {
-            console.log('Error fetching critical exceptions, using fallback:', error.message);
-            return [
-                { id: 1, time: '09:15', customer: 'John Dela Cruz', loanId: 'LN-2026-00123', reason: 'Amount Mismatch' },
-                { id: 2, time: '08:45', customer: 'Maria Santos', loanId: 'LN-2026-00456', reason: 'Not Received' },
-                { id: 3, time: '08:20', customer: 'Jose Rizal', loanId: 'LN-2026-00789', reason: 'Other' },
+            console.log(
+                'Error fetching critical exceptions, using fallback:',
+                error.message
+            );
+            return [{
+                    id: 1,
+                    time: '09:15',
+                    customer: 'John Dela Cruz',
+                    loanId: 'LN-2026-00123',
+                    reason: 'Amount Mismatch',
+                },
+                {
+                    id: 2,
+                    time: '08:45',
+                    customer: 'Maria Santos',
+                    loanId: 'LN-2026-00456',
+                    reason: 'Not Received',
+                },
+                {
+                    id: 3,
+                    time: '08:20',
+                    customer: 'Jose Rizal',
+                    loanId: 'LN-2026-00789',
+                    reason: 'Other',
+                },
             ];
         }
     },

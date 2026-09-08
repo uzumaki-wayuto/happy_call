@@ -1,3 +1,4 @@
+// fe/src/pages/TargetListUpload.jsx
 import { useState } from 'react';
 import {
   Card,
@@ -17,7 +18,7 @@ import { InboxOutlined, DownloadOutlined, UploadOutlined, QuestionCircleOutlined
 import * as XLSX from 'xlsx';
 import { campaignApi } from '../api/campaignApi';
 import { formatCurrency } from '../config/currency';
-import { parseAmount, formatAmount } from '../utils/amountParser';
+import { parseAmount } from '../utils/amountParser';
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
@@ -31,44 +32,66 @@ const TargetListUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   // Required columns for validation
- const requiredColumns = ['loan_id', 'customer_name', 'phone_number', 'amount', 'branch'];
+  const requiredColumns = ['loan_id', 'customer_name', 'phone_number', 'amount', 'branch'];
 
   const validateRow = (row) => {
     const errors = [];
 
-     requiredColumns.forEach((col) => {
+    requiredColumns.forEach((col) => {
       if (!row[col] || row[col].toString().trim() === '') {
         errors.push(`${col.replace('_', ' ')} is required`);
       }
     });
 
-    // Validate loan_id format
+    // ✅ Strict loan_id validation
     if (row.loan_id) {
       const loanId = row.loan_id.toString().trim();
-      if (!/^LN-\d{4}-\d{5}$/.test(loanId) && !/^[A-Z0-9-]+$/.test(loanId)) {
-        errors.push('Invalid loan_id format (expected LN-YYYY-XXXXX)');
+      
+      // Format: LN-YYYY-XXXXX (e.g., LN-2026-00123)
+      const isValidFormat = /^LN-\d{4}-\d{5}$/.test(loanId);
+      
+      // Alternative: Alphanumeric with hyphens (3-30 chars)
+      const isFlexibleFormat = /^[A-Z0-9-]{3,30}$/.test(loanId);
+      
+      // Check if it's just numbers or too simple
+      const isTooSimple = /^\d+$/.test(loanId) && loanId.length < 8;
+
+      if (!isValidFormat && !isFlexibleFormat) {
+        errors.push('Invalid loan_id format. Expected: LN-YYYY-XXXXX (e.g., LN-2026-00123)');
+      } else if (isTooSimple) {
+        errors.push('Loan ID is too simple. Expected format: LN-YYYY-XXXXX');
+      } else if (loanId.length < 5) {
+        errors.push('Loan ID is too short. Must be at least 5 characters.');
       }
     }
-    // if (row.loan_id && !/^LN-\d{4}-\d{5}$/.test(row.loan_id.toString().trim())) {
-    //   errors.push('Invalid loan_id format (expected LN-YYYY-XXXXX)');
-    // }
 
-    // if (row.amount && isNaN(parseFloat(row.amount))) {
-    //   errors.push('Amount must be a valid number');
-    // }
-      // ✅ Use parseAmount for validation
+    // ✅ Use parseAmount for validation
     if (row.amount) {
       const amount = parseAmount(row.amount);
       if (isNaN(amount) || amount <= 0) {
         errors.push('Amount must be a positive number');
       }
+      if (amount > 999999999) {
+        errors.push('Amount seems too large (> 999,999,999)');
+      }
     }
 
-    // Validate phone number (basic)
+    // Validate phone number
     if (row.phone_number) {
       const phone = row.phone_number.toString().trim();
       if (phone.length < 9) {
-        errors.push('Phone number are incorrect');
+        errors.push('Phone number is incorrect');
+      }
+      if (!/^[\d+\-\s()]+$/.test(phone)) {
+        errors.push('Phone number contains invalid characters');
+      }
+    }
+
+    // Validate branch
+    if (row.branch) {
+      const branch = row.branch.toString().trim();
+      if (branch.length < 2) {
+        errors.push('Branch name is too short');
       }
     }
 
@@ -116,13 +139,13 @@ const TargetListUpload = () => {
           setIsUploading(false);
           return;
         }
- // ✅ Parse amounts and validate
+
+        // ✅ Parse amounts and validate
         const validatedData = data.map((row) => {
-           // Parse amount to number
           const parsedAmount = parseAmount(row.amount);
           const rowWithParsedAmount = {
             ...row,
-            amount: parsedAmount, // Store as number
+            amount: parsedAmount,
           };
           const validation = validateRow(rowWithParsedAmount);
           return {
@@ -172,29 +195,25 @@ const TargetListUpload = () => {
     setIsUploading(true);
 
     try {
-      // Convert to API format
-       const payload = {
+      const payload = {
         taskType,
         rows: validRowsData.map(row => ({
           loanId: row.loan_id,
           customerName: row.customer_name,
           phoneNumber: row.phone_number,
-          amount: parseAmount(row.amount), // ✅ Use parseAmount
-          branch: row.branch || '', // ✅ Include branch
-          loanOfficer: row.loan_officer || '', // Optional
-          disbursementDate: row.disbursement_date || null, // Optional
-          maturityDate: row.maturity_date || null, // Optional
+          amount: parseAmount(row.amount),
+          branch: row.branch || '',
+          loanOfficer: row.loan_officer || '',
+          disbursementDate: row.disbursement_date || null,
+          maturityDate: row.maturity_date || null,
         })),
       };
 
       console.log('📤 Upload payload:', payload);
 
-
-      // ✅ Call the real API
       const response = await campaignApi.uploadTargetList(payload);
-      message.success(`${validRowsData.length} tasks created successfully!`);
 
-       if (response.data && response.data.success) {
+      if (response.data && response.data.success) {
         const { created, assigned, errors } = response.data;
         let successMsg = `${created} tasks created successfully`;
         if (assigned > 0) {
@@ -217,12 +236,10 @@ const TargetListUpload = () => {
       setErrorRows(0);
     } catch (error) {
       console.error('Upload error:', error);
-      console.error('Error details:', error.response?.data); // ✅ Add this
+      console.error('Error details:', error.response?.data);
 
-       // Show detailed error message
       const errorMsg = error.response?.data?.error || error.message || 'Failed to upload tasks';
       message.error(`Upload failed: ${errorMsg}`);
-      // If there are partial errors, show them
       if (error.response?.data?.errors && error.response.data.errors.length > 0) {
         console.error('Detailed errors:', error.response.data.errors);
       }
@@ -231,7 +248,7 @@ const TargetListUpload = () => {
     }
   };
 
- const downloadTemplate = () => {
+  const downloadTemplate = () => {
     const templateData = [
       {
         loan_id: 'LN-2026-00001',
@@ -255,27 +272,25 @@ const TargetListUpload = () => {
       },
     ];
 
-
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(templateData);
 
-     // Optional: Add column widths
-  ws['!cols'] = [
-      { wch: 18 }, // loan_id
-      { wch: 22 }, // customer_name
-      { wch: 18 }, // phone_number
-      { wch: 15 }, // amount
-      { wch: 20 }, // branch
-      { wch: 20 }, // loan_officer
-      { wch: 18 }, // disbursement_date
-      { wch: 18 }, // maturity_date
+    ws['!cols'] = [
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, 'Loans');
     XLSX.writeFile(wb, 'happy_call_template.xlsx');
   };
 
- const previewColumns = [
+  const previewColumns = [
     {
       title: '#',
       key: 'index',
@@ -286,7 +301,17 @@ const TargetListUpload = () => {
       title: 'Loan ID',
       dataIndex: 'loan_id',
       key: 'loan_id',
-      width: 140,
+      width: 160,
+      render: (value) => {
+        const loanId = value?.toString().trim() || '';
+        const isValid = /^LN-\d{4}-\d{5}$/.test(loanId);
+        return (
+          <span style={{ color: isValid ? 'inherit' : '#ff4d4f' }}>
+            {loanId || '-'}
+            {!isValid && loanId && ' ⚠️'}
+          </span>
+        );
+      },
     },
     {
       title: 'Customer Name',
@@ -311,9 +336,8 @@ const TargetListUpload = () => {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
-      width: 130,
+      width: 150,
       render: (amount) => {
-        // ✅ Properly format amount with MMK currency
         const num = parseAmount(amount);
         if (num <= 0) return <span style={{ color: '#ff4d4f' }}>Invalid</span>;
         return <span style={{ fontWeight: 500 }}>{formatCurrency(num)}</span>;
@@ -333,7 +357,7 @@ const TargetListUpload = () => {
       title: 'Errors',
       dataIndex: '_errors',
       key: 'errors',
-      width: 200,
+      width: 250,
       render: (errors) => (
         <Text type="danger" style={{ fontSize: 12 }}>
           {errors && errors.length > 0 ? errors.join('; ') : '✓'}
@@ -341,7 +365,6 @@ const TargetListUpload = () => {
       ),
     },
   ];
-
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -391,19 +414,17 @@ const TargetListUpload = () => {
             </p>
           </Dragger>
 
-          <Space style={{ marginTop: 8 }}>
+          <Space style={{ marginTop: 8 }} wrap>
             <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
               Download Template
             </Button>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              (Includes required columns: loan_id, customer_name, phone_number, amount)
+              (Required: loan_id, customer_name, phone_number, amount, branch,loan_officer, disbursement_date, maturity_date)
             </Text>
-  
-  
-  <Tooltip title="Required format: LN-YYYY-XXXXX for loan_id, numbers only for amount">
-    <QuestionCircleOutlined style={{ color: '#1890ff' }} />
-  </Tooltip>
-</Space>
+            <Tooltip title="Loan ID format: LN-YYYY-XXXXX (e.g., LN-2026-00123)">
+              <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+            </Tooltip>
+          </Space>
         </div>
 
         {uploadedData.length > 0 && (
@@ -429,7 +450,7 @@ const TargetListUpload = () => {
               rowKey={(record, index) => index}
               pagination={{ pageSize: 10 }}
               size="small"
-              scroll={{ x: 800 }}
+              scroll={{ x: 1100 }}
               rowClassName={(record) => (record._valid ? '' : 'ant-table-row-error')}
             />
 
@@ -449,6 +470,7 @@ const TargetListUpload = () => {
                 icon={<UploadOutlined />}
                 onClick={handleUploadAndAssign}
                 disabled={validRows === 0}
+                loading={isUploading}
               >
                 Upload & Assign ({validRows} rows)
               </Button>

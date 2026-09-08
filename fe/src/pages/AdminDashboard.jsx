@@ -2,24 +2,24 @@
 import { useState, useEffect } from 'react';
 import {
   Card,
-    Table,
-    Tag,
-    Button,
-    Space,
-    Select,
-    Input,
-    Typography,
-    Row,
-    Col,
-    Statistic,
-    Badge,
-    Tabs,
-    Progress,
-    message,
-    Spin,
-    Tooltip,
-    List,
-    Alert,
+  Table,
+  Tag,
+  Button,
+  Space,
+  Select,
+  Input,
+  Typography,
+  Row,
+  Col,
+  Statistic,
+  Badge,
+  Tabs,
+  Progress,
+  message,
+  Spin,
+  Tooltip,
+  List,
+  Alert,
 } from 'antd';
 import {
   UserOutlined,
@@ -53,13 +53,18 @@ const AdminDashboard = () => {
     activeCampaigns: 0,
     campaignLoans: 0,
     todayCalls: 0,
-    called: 0,
+    confirmedCallsToday: 0,
+    disputedCallsToday: 0,
+    noContactCallsToday: 0,
     yesterdayCalls: 0,
     percentageChange: 0,
-    exceptions: 0,
-    totalLoans: 0,
+    totalVerifications: 0,
     completed: 0,
     remaining: 0,
+    exceptions: 0,
+    disputedTasks: 0,
+    escalatedTasks: 0,
+    noContactTasks: 0,
     completionRate: 0,
   });
 
@@ -91,16 +96,16 @@ const AdminDashboard = () => {
       const criticalData = criticalRes.data || criticalRes || [];
 
       // Validate percentage change makes sense
-if (statsData.todayCalls === 0 && statsData.yesterdayCalls > 0) {
-    statsData.percentageChange = -100;
-} else if (statsData.todayCalls === 0 && statsData.yesterdayCalls === 0) {
-    statsData.percentageChange = 0;
-}
+      if (statsData.todayCalls === 0 && statsData.yesterdayCalls > 0) {
+        statsData.percentageChange = -100;
+      } else if (statsData.todayCalls === 0 && statsData.yesterdayCalls === 0) {
+        statsData.percentageChange = 0;
+      }
 
       console.log('✅ Processed stats:', statsData);
       console.log('📊 Today calls:', statsData.todayCalls);
-console.log('📊 Yesterday calls:', statsData.yesterdayCalls);
-console.log('📊 Percentage change:', statsData.percentageChange);
+      console.log('📊 Exceptions:', statsData.exceptions);
+      console.log('📊 Today disputes:', statsData.disputedCallsToday);
 
       setStats(statsData);
       setBranchPerformance(branchesData);
@@ -189,9 +194,6 @@ console.log('📊 Percentage change:', statsData.percentageChange);
       </div>
     );
   }
-
-
-  
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Title level={2} style={{ marginBottom: 8, flexShrink: 0 }}>
@@ -204,7 +206,6 @@ console.log('📊 Percentage change:', statsData.percentageChange);
         Overview of system performance and key metrics
       </Text>
 
-      {/* ✅ Content that stretches */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Row 1: Core KPIs */}
         <Row gutter={[24, 16]}>
@@ -248,39 +249,47 @@ console.log('📊 Percentage change:', statsData.percentageChange);
                 suffix={
                   <div style={{ fontSize: 12, marginTop: 4 }}>
                     <Text type="secondary">
-                     {stats.yesterdayCalls > 0 || stats.todayCalls > 0 ? (
-                      <>
-                       {stats.percentageChange > 0 ? '↑' : stats.percentageChange < 0 ? '↓' : '→'}
-                       {' '}{Math.abs(stats.percentageChange)}% vs yesterday
-                        <span style={{ display: 'block', fontSize: 10, color: '#999' }}>
-                       (Yesterday: {stats.yesterdayCalls})
-                       </span>
-                     </>
-                    ) : (
+                      {stats.yesterdayCalls > 0 || stats.todayCalls > 0 ? (
+                        <>
+                          {stats.percentageChange > 0
+                            ? '↑'
+                            : stats.percentageChange < 0
+                              ? '↓'
+                              : '→'}{' '}
+                          {Math.abs(stats.percentageChange)}% vs yesterday
+                          <span style={{ display: 'block', fontSize: 10, color: '#999' }}>
+                            (Yesterday: {stats.yesterdayCalls})
+                          </span>
+                        </>
+                      ) : (
                         'No data available'
-                    )}
-                    <span style={{ display: 'block', fontSize: 10, color: '#999'}}>
-                      Total Called : {stats.called}
+                      )}
+                      <span style={{ display: 'block', fontSize: 10, color: '#999' }}>
+                        ✅ Confirmed: {stats.confirmedCallsToday} | 🔴 Disputed:{' '}
+                        {stats.disputedCallsToday}
                       </span>
-                     </Text> 
-                   </div>
-      }
+                    </Text>
+                  </div>
+                }
               />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <Card style={{ height: 130 }}>
               <Statistic
-                title="Exceptions"
+                title="Total Exceptions"
                 value={stats.exceptions}
                 prefix={<ExclamationCircleOutlined />}
                 styles={{ content: { color: '#ff4d4f', fontSize: 28 } }}
                 suffix={
                   <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                    {stats.totalLoans > 0
-                      ? ((stats.exceptions / stats.totalLoans) * 100).toFixed(1)
+                    {stats.totalVerifications > 0
+                      ? ((stats.exceptions / stats.totalVerifications) * 100).toFixed(1)
                       : 0}
                     % of total
+                    <span style={{ display: 'block', fontSize: 10, color: '#999' }}>
+                      ⚠️ Disputed: {stats.disputedTasks} | 📌 Escalated: {stats.escalatedTasks}
+                    </span>
                   </Text>
                 }
               />
@@ -288,13 +297,13 @@ console.log('📊 Percentage change:', statsData.percentageChange);
           </Col>
         </Row>
 
-        {/* Row 2: Loan KPIs - 3 columns with equal spacing */}
+        {/* Row 2: Verification KPIs */}
         <Row gutter={[24, 16]} style={{ marginBottom: 20 }}>
           <Col xs={24} sm={8}>
             <Card style={{ height: 120 }}>
               <Statistic
-                title="Total Loans"
-                value={stats.totalLoans}
+                title="Total Verifications"
+                value={stats.totalVerifications}
                 prefix={<FileTextOutlined />}
                 styles={{ content: { color: '#1890ff', fontSize: 28 } }}
               />
@@ -324,8 +333,8 @@ console.log('📊 Percentage change:', statsData.percentageChange);
                 styles={{ content: { color: '#faad14', fontSize: 28 } }}
                 suffix={
                   <Text type="secondary" style={{ fontSize: 14 }}>
-                    {stats.totalLoans > 0
-                      ? ((stats.remaining / stats.totalLoans) * 100).toFixed(1)
+                    {stats.totalVerifications > 0
+                      ? ((stats.remaining / stats.totalVerifications) * 100).toFixed(1)
                       : 0}
                     %
                   </Text>
@@ -335,7 +344,7 @@ console.log('📊 Percentage change:', statsData.percentageChange);
           </Col>
         </Row>
 
-        {/* Row 3: Branch Performance + System Notices - Full width 50/50 split */}
+        {/* Row 3: Branch Performance + System Notices */}
         <Row gutter={[24, 16]} style={{ flex: 1 }}>
           <Col xs={24} lg={12} style={{ display: 'flex' }}>
             <Card title="Top 5 Branch (Completion %)" style={{ flex: 1, minHeight: 280 }}>
@@ -408,12 +417,14 @@ console.log('📊 Percentage change:', statsData.percentageChange);
             </Card>
           </Col>
         </Row>
-        {/* ✅ NEW: Call Trend Chart - Global View */}
+
+        {/* Call Trend Chart */}
         <CallTrendChart
           type="global"
           title="Overall Call Trend (All Agents)"
           showAgentFilter={true}
         />
+
         {/* Row 4: Exception Distribution + Critical Exceptions */}
         <Row gutter={[24, 16]} style={{ flex: 1 }}>
           <Col xs={24} lg={8} style={{ display: 'flex' }}>
@@ -465,8 +476,6 @@ console.log('📊 Percentage change:', statsData.percentageChange);
       </div>
     </div>
   );
-
 };
-
 
 export default AdminDashboard;
