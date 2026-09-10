@@ -70,7 +70,7 @@ const CallTrendChart = ({
       console.error('Error fetching trend data:', error);
       message.error('Failed to load trend data');
       // ✅ Fallback to mock data if API fails
-      setData(generateFallbackData());
+      setData([]);
     } finally {
       setLoading(false);
     }

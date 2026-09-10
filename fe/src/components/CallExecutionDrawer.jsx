@@ -15,6 +15,9 @@ import {
   Form,
   message,
   Badge,
+  Modal, // ✅ Add this
+  DatePicker, // ✅ Add this
+  TimePicker, // ✅ Add this
 } from 'antd';
 import {
   PhoneOutlined,
@@ -27,6 +30,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { pbxApi } from '../api/pbxApi';
 import { socketService } from '../services/socket';
+import { taskApi } from '../api/taskApi'; 
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -574,7 +579,7 @@ const CallExecutionDrawer = ({ open, task, onClose, onSave }) => {
               />
             </Descriptions.Item>
             <Descriptions.Item label="Loan Amount">
-              ₱{task.amount?.toLocaleString() || 0}
+              {formatCurrency(task.amount)} 
             </Descriptions.Item>
             <Descriptions.Item label="Type">
               <Tag color={task.type === 'DISBURSEMENT' ? 'blue' : 'green'}>

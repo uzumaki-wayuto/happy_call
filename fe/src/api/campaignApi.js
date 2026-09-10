@@ -14,6 +14,9 @@ export const campaignApi = {
     // Update campaign (Admin only)
     updateCampaign: (id, data) => api.put(`/campaigns/${id}`, data),
 
+    // Update campaign status
+    updateCampaignStatus: (id, status) => api.put(`/campaigns/${id}/status`, { status }),
+
     // Delete campaign (Admin only)
     deleteCampaign: (id) => api.delete(`/campaigns/${id}`),
 
@@ -22,6 +25,12 @@ export const campaignApi = {
         api.post('/campaigns/upload', data, {
             headers: { 'Content-Type': 'application/json' },
         }),
+
+    // Get campaign loans
+    getCampaignLoans: (id, params) => api.get(`/campaigns/${id}/loans`, { params }),
+
+    // Get campaign statistics
+    getCampaignStatistics: (id) => api.get(`/campaigns/${id}/statistics`),
 };
 
 export default campaignApi;

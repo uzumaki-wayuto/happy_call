@@ -6,25 +6,24 @@ import { AuthProvider, ROLES, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/Layout/MainLayout';
 import Login from './pages/Login';
-import AdminLogin from './pages/AdminLogin'
+import AdminLogin from './pages/AdminLogin';
+
 
 // Lazy load pages with loading indicator
 const LoadingFallback = () => (
-  <div style={{ 
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    height: '100vh',
-  }}>
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+    }}
+  >
     <Spin size="large" tip="Loading..." />
   </div>
 );
 
-const LazyRoute = ({ children }) => (
-  <Suspense fallback={<LoadingFallback />}>
-    {children}
-  </Suspense>
-);
+const LazyRoute = ({ children }) => <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
 
 // Lazy load all pages
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -43,6 +42,8 @@ const TargetListUpload = lazy(() => import('./pages/TargetListUpload'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const AgentAssignment = lazy(() => import('./pages/AgentAssignment'));
 const AgentAssignmentDashboard = lazy(() => import('./pages/AgentAssignmentDashboard'));
+const PbxManagement = lazy(() => import('./pages/PbxManagement'));
+const CampaignAssignment = lazy(() => import('./pages/CampaignAssignment'));
 
 // Wrapper to show correct dashboard based on role
 const DashboardWrapper = () => {
@@ -62,7 +63,7 @@ function App() {
           <Route path="/admin/" element={<AdminLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} /> {/* ✅ Admin login route */}
           <Route path="/" element={<Navigate to="/login" replace />} />
-
+          <Route path="*" element={<Navigate to="/login" replace />} />
           {/* ===== ADMIN PORTAL (/admin/*) ===== */}
           <Route
             path="/admin/dashboard"
@@ -95,11 +96,52 @@ function App() {
             }
           />
           <Route
+            path="/admin/assignment"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
+                <MainLayout>
+                  <AgentAssignmentDashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/campaigns"
             element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                 <MainLayout>
                   <Campaigns />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/campaign-assignment"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout>
+                  <CampaignAssignment />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          {/* ===== ADMIN: TASKS + ASSIGNMENT ===== */}
+          <Route
+            path="/admin/tasks"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout>
+                  <AgentAssignmentDashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/task-assignment"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout>
+                  <AgentAssignment />
                 </MainLayout>
               </ProtectedRoute>
             }
@@ -114,23 +156,33 @@ function App() {
               </ProtectedRoute>
             }
           />
-          // Add route for admin/supervisor
-<Route
-    path="/admin/assignment"
-    element={
-        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
-            <MainLayout>
-                <AgentAssignmentDashboard />
-            </MainLayout>
-        </ProtectedRoute>
-    }
-/>
+          <Route
+            path="/admin/exceptions"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout>
+                  <Exceptions />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin/settings"
             element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                 <MainLayout>
                   <SystemSettings />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          {/* ===== ADMIN: PBX (admin only) ===== */}
+          <Route
+            path="/admin/pbx"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout>
+                  <PbxManagement />
                 </MainLayout>
               </ProtectedRoute>
             }
@@ -143,17 +195,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-    path="/admin/assign"
-    element={
-        <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-            <MainLayout>
-                <AgentAssignment />
-            </MainLayout>
-        </ProtectedRoute>
-    }
-/>
-
           {/* ===== SUPERVISOR + AGENT PORTAL (root) ===== */}
           <Route
             path="/dashboard"
@@ -216,6 +257,42 @@ function App() {
             }
           />
           <Route
+            path="/supervisor/campaign-assignment"
+            element={
+              <ProtectedRoute roles={['ROLES.SUPERVISOR']}>
+                <CampaignAssignment />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/supervisor/tasks"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
+                <MainLayout>
+                  <AgentAssignmentDashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/supervisor/task-assignment"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
+                <MainLayout>
+                  <AgentAssignment />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/supervisor/assignment"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
+                <Navigate to="/supervisor/task-assignment" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/agents"
             element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
@@ -225,18 +302,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          // Add route for admin/supervisor
-<Route
-    path="/admin/assignment"
-    element={
-        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
-            <MainLayout>
-                <AgentAssignmentDashboard />
-            </MainLayout>
-        </ProtectedRoute>
-    }
-/>
-
           <Route
             path="/exceptions"
             element={

@@ -31,6 +31,7 @@ import {
     ReloadOutlined,
 } from '@ant-design/icons';
 import { assignmentApi } from '../api/assignmentApi';
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -196,7 +197,7 @@ const AgentAssignmentDashboard = () => {
             title: 'Amount',
             dataIndex: 'amount',
             key: 'amount',
-            render: (amount) => `₱${amount?.toLocaleString() || 0}`,
+            render: (amount) => formatCurrency(amount),
         },
         {
             title: 'Status',

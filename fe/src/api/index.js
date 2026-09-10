@@ -15,6 +15,14 @@ export { default as reportApi }
 from './reportApi';
 export { default as trendApi }
 from './trendApi';
+export { default as loanApi }
+from './loanApi'; // ✅ Add this
+export { default as assignmentApi }
+from './assignmentApi';
+export { default as pbxApi }
+from './pbxApi';
+export { default as attemptApi }
+from './attemptApi';
 
 export * from './authApi';
 export * from './taskApi';
@@ -23,3 +31,7 @@ export * from './campaignApi';
 export * from './dashboardApi';
 export * from './reportApi';
 export * from './trendApi';
+export * from './loanApi';
+export * from './assignmentApi';
+export * from './pbxApi';
+export * from './attemptApi';

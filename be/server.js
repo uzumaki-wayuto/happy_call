@@ -1,4 +1,4 @@
-// server.js - COMPLETE FIXED VERSION
+// server.js - FIXED VERSION WITH BETTER ERROR HANDLING
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -22,6 +22,7 @@ import { pbxService } from './src/services/pbxService.js';
 import { assignmentService } from './src/services/assignmentService.js';
 import { accessLogMiddleware } from './src/middleware/accessLogMiddleware.js';
 import { immutabilityMiddleware } from './src/middleware/immutabilityMiddleware.js';
+import callbackRoutes from './src/routes/callbackRoutes.js';
 
 dotenv.config();
 
@@ -30,30 +31,121 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
 // ============ MIDDLEWARE ============
-app.use(helmet());
-app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
-    credentials: true,
-}));
-app.use(express.json());
-app.use(accessLogMiddleware);
-app.use(immutabilityMiddleware);
+app.use(
+    helmet({
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+);
 
-// Rate limiting
+// Enhanced CORS for development
+app.use(
+    cors({
+        origin: function(origin, callback) {
+            const allowedOrigins = [
+                'http://localhost:5173',
+                'http://localhost:3000',
+                'http://127.0.0.1:5173',
+                'http://127.0.0.1:3000',
+                'http://192.168.7.100:5173', // Add your network IP if needed
+            ];
+            // Allow requests with no origin (like mobile apps or curl requests)
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.indexOf(origin) !== -1) {
+                callback(null, true);
+            } else {
+                console.log('Blocked origin:', origin);
+                callback(null, true); // Allow all in development
+            }
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization',
+            'X-Requested-With',
+            'Accept',
+        ],
+        exposedHeaders: ['X-Audit-Logged'],
+    })
+);
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ============ HEALTH CHECK (BEFORE AUTH) ============
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ============ RATE LIMITING ============
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // limit each IP to 1000 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    skip: (req) => {
+        // Skip rate limiting for health check
+        return req.path === '/api/health';
+    },
 });
 app.use('/api/', limiter);
 
 // ============ CREATE HTTP SERVER WITH SOCKET.IO ============
 const server = createServer(app);
+
+// Increase max listeners to prevent warnings
+server.setMaxListeners(20);
+
 const io = new SocketServer(server, {
     cors: {
-        origin: ['http://localhost:5173', 'http://localhost:3000'],
+        origin: [
+            'http://localhost:5173',
+            'http://localhost:3000',
+            'http://127.0.0.1:5173',
+        ],
         credentials: true,
+        methods: ['GET', 'POST'],
     },
     transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    allowEIO3: true,
+});
+
+// ============ AUTH ROUTES (NO MIDDLEWARE NEEDED) ============
+app.post('/api/auth/login', async(req, res) => {
+    try {
+        console.log('🔐 Login attempt:', req.body.username);
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({
+                error: 'Username and password are required',
+            });
+        }
+
+        const result = await authService.login(username, password);
+        console.log('✅ Login successful:', username);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Login error:', error.message);
+        res.status(401).json({
+            error: error.message || 'Invalid credentials',
+        });
+    }
+});
+
+app.post('/api/auth/refresh', async(req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ error: 'Token is required' });
+        }
+        const result = await authService.refreshToken(token);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Refresh error:', error.message);
+        res.status(401).json({ error: error.message });
+    }
 });
 
 // ============ SOCKET.IO MIDDLEWARE ============
@@ -76,94 +168,28 @@ io.use((socket, next) => {
 // ============ SOCKET.IO CONNECTION HANDLER ============
 io.on('connection', (socket) => {
     console.log(`✅ Socket connected: ${socket.id} (User: ${socket.userId})`);
-
     socket.join(`user_${socket.userId}`);
-
-    // PBX event forwarders
-    const pbxEventHandlers = {
-        'call:started': (data) => {
-            socket.emit('call:started', data);
-            if (data.agentId) {
-                io.to(`user_${data.agentId}`).emit('call:started', data);
-            }
-        },
-        'call:ringing': (data) => {
-            socket.emit('call:ringing', data);
-            if (data.agentId) {
-                io.to(`user_${data.agentId}`).emit('call:ringing', data);
-            }
-        },
-        'call:connected': (data) => {
-            socket.emit('call:connected', data);
-            if (data.agentId) {
-                io.to(`user_${data.agentId}`).emit('call:connected', data);
-            }
-        },
-        'call:ended': (data) => {
-            socket.emit('call:ended', data);
-            if (data.agentId) {
-                io.to(`user_${data.agentId}`).emit('call:ended', data);
-            }
-        },
-        'call:error': (data) => {
-            socket.emit('call:error', data);
-            if (data.agentId) {
-                io.to(`user_${data.agentId}`).emit('call:error', data);
-            }
-        },
-        'pbx:status': (data) => {
-            socket.emit('pbx:status', data);
-        }
-    };
-
-    Object.keys(pbxEventHandlers).forEach(event => {
-        pbxService.on(event, pbxEventHandlers[event]);
-    });
-
-    // Client events
-    socket.on('pbx:getStatus', async() => {
-        try {
-            const status = {
-                connected: pbxService.isConnected(),
-                activeCalls: pbxService.getActiveCalls().length,
-                activeCallsList: pbxService.getActiveCalls(),
-            };
-            socket.emit('pbx:status', status);
-        } catch (error) {
-            socket.emit('pbx:error', { message: error.message });
-        }
-    });
-
-    socket.on('call:monitor', async(data) => {
-        const { callId } = data;
-        if (callId) {
-            const status = pbxService.getCallStatus(callId);
-            if (status) {
-                socket.emit('call:status', { callId, status });
-            }
-        }
-    });
 
     socket.on('disconnect', () => {
         console.log(`❌ Socket disconnected: ${socket.id}`);
-        Object.keys(pbxEventHandlers).forEach(event => {
-            pbxService.off(event, pbxEventHandlers[event]);
-        });
     });
 });
 
-// ============ HEALTH CHECK ============
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// ============ APPLY MIDDLEWARE (AFTER AUTH ROUTES) ============
+app.use(accessLogMiddleware);
+app.use(immutabilityMiddleware);
 
-// ============ DASHBOARD ROUTES ============
+// ============ REST OF YOUR ROUTES ============
+// DASHBOARD ROUTES - ALL MUST BE HERE
+// ============================================
+
 app.get('/api/dashboard/admin/stats', async(req, res) => {
     try {
+        console.log('📊 Fetching admin stats...');
         const stats = await dashboardService.getAdminStats();
         res.json(stats);
     } catch (error) {
-        console.error('Error fetching admin stats:', error);
+        console.error('❌ Error fetching admin stats:', error);
         res.status(500).json({ error: 'Failed to fetch admin stats' });
     }
 });
@@ -205,20 +231,18 @@ app.get('/api/dashboard/notices', async(req, res) => {
         res.json(notices);
     } catch (error) {
         console.error('Error fetching notices:', error);
-        res.status(200).json([
-            { type: 'info', message: 'System is running normally', date: new Date().toISOString().slice(0, 10) },
-            { type: 'success', message: 'Welcome to Happy Call System', date: new Date().toISOString().slice(0, 10) },
+        // Return fallback data
+        res.json([{
+                type: 'info',
+                message: 'System is running normally',
+                date: new Date().toISOString().slice(0, 10),
+            },
+            {
+                type: 'success',
+                message: 'Welcome to Happy Call System',
+                date: new Date().toISOString().slice(0, 10),
+            },
         ]);
-    }
-});
-
-app.get('/api/dashboard/exception-by-type', async(req, res) => {
-    try {
-        const data = await dashboardService.getExceptionByType();
-        res.json(data);
-    } catch (error) {
-        console.error('Error fetching exception by type:', error);
-        res.status(500).json({ error: 'Failed to fetch exception data' });
     }
 });
 
@@ -260,13 +284,20 @@ app.get('/api/tasks', async(req, res) => {
         const { agentId, status, type, searchText } = req.query;
 
         let tasks;
-        const hasValidAgentId = agentId && agentId !== 'null' && agentId !== 'undefined';
+        const hasValidAgentId =
+            agentId && agentId !== 'null' && agentId !== 'undefined';
 
         if (status && status.includes(',')) {
             const statuses = status.split(',');
             tasks = await taskService.getTasksByStatus(statuses, type);
+            console.log('get task by status {tasks}');
         } else if (hasValidAgentId) {
-            tasks = await taskService.getTasksByAgent(agentId, { status, type, searchText });
+            tasks = await taskService.getTasksByAgent(agentId, {
+                status,
+                type,
+                searchText,
+            });
+            console.log('get task by agent id {tasks}');
         } else {
             tasks = await taskService.getTasks({ status, type, searchText });
         }
@@ -337,7 +368,10 @@ app.get('/api/attempts/agent/:agentId', async(req, res) => {
     try {
         const { limit } = req.query;
         const validLimit = parseInt(limit) || 50;
-        const attempts = await attemptService.getAttemptsByAgent(req.params.agentId, validLimit);
+        const attempts = await attemptService.getAttemptsByAgent(
+            req.params.agentId,
+            validLimit
+        );
         res.json(attempts);
     } catch (error) {
         console.error('Error fetching agent attempts:', error);
@@ -479,6 +513,50 @@ app.delete('/api/campaigns/:id', async(req, res) => {
         res.status(500).json({ error: 'Failed to delete campaign' });
     }
 });
+// ============ GET CAMPAIGN LOANS ============
+app.get('/api/campaigns/:id/loans', async(req, res) => {
+    try {
+        const { id } = req.params;
+        const { taskType, status } = req.query;
+        const loans = await campaignService.getCampaignLoans(id, {
+            taskType,
+            status,
+        });
+        res.json(loans);
+    } catch (error) {
+        console.error('Error fetching campaign loans:', error);
+        res.status(500).json({ error: 'Failed to fetch campaign loans' });
+    }
+});
+
+// ============ GET CAMPAIGN STATISTICS ============
+app.get('/api/campaigns/:id/statistics', async(req, res) => {
+    try {
+        const { id } = req.params;
+        const stats = await campaignService.getCampaignStatistics(id);
+        res.json(stats);
+    } catch (error) {
+        console.error('Error fetching campaign statistics:', error);
+        res.status(500).json({ error: 'Failed to fetch campaign statistics' });
+    }
+});
+
+// ============ UPDATE CAMPAIGN STATUS ============
+app.put('/api/campaigns/:id/status', async(req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const result = await campaignService.updateCampaignStatus(id, status);
+        if (result.success) {
+            res.json({ success: true });
+        } else {
+            res.status(500).json({ error: result.error });
+        }
+    } catch (error) {
+        console.error('Error updating campaign status:', error);
+        res.status(500).json({ error: 'Failed to update campaign status' });
+    }
+});
 
 // ============ REPORT ROUTES ============
 app.get('/api/reports/agent-performance', async(req, res) => {
@@ -540,7 +618,10 @@ app.post('/api/tasks/auto-assign', async(req, res) => {
 app.post('/api/tasks/assign', async(req, res) => {
     try {
         const { taskIds, agentId } = req.body;
-        const result = await assignmentService.assignTasksToAgentBatch(taskIds, agentId);
+        const result = await assignmentService.assignTasksToAgentBatch(
+            taskIds,
+            agentId
+        );
         res.json(result);
     } catch (error) {
         console.error('Error assigning tasks:', error);
@@ -576,7 +657,7 @@ app.get('/api/pbx/status', async(req, res) => {
         const connected = pbxService.isConnected();
         res.json({
             connected: connected,
-            activeCalls: pbxService.getActiveCalls().length
+            activeCalls: pbxService.getActiveCalls().length,
         });
     } catch (error) {
         console.error('Error getting PBX status:', error);
@@ -599,12 +680,19 @@ app.post('/api/pbx/call', async(req, res) => {
 
         if (!agentExtension || !customerPhone || !taskId || !agentId) {
             return res.status(400).json({
-                error: 'Missing required fields: agentExtension, customerPhone, taskId, agentId'
+                error: 'Missing required fields: agentExtension, customerPhone, taskId, agentId',
             });
         }
 
-        console.log(`📞 Click-to-Call request: ${agentExtension} → ${customerPhone}`);
-        const result = await pbxService.clickToCall(agentExtension, customerPhone, taskId, agentId);
+        console.log(
+            `📞 Click-to-Call request: ${agentExtension} → ${customerPhone}`
+        );
+        const result = await pbxService.clickToCall(
+            agentExtension,
+            customerPhone,
+            taskId,
+            agentId
+        );
         res.json(result);
     } catch (error) {
         console.error('❌ Click-to-Call error:', error);
@@ -614,8 +702,15 @@ app.post('/api/pbx/call', async(req, res) => {
 
 app.post('/api/pbx/manual', async(req, res) => {
     try {
-        const { taskId, agentId, manualReason, reasonDetail, customerPhone } = req.body;
-        const result = await pbxService.manualDial(taskId, agentId, manualReason, reasonDetail, customerPhone);
+        const { taskId, agentId, manualReason, reasonDetail, customerPhone } =
+        req.body;
+        const result = await pbxService.manualDial(
+            taskId,
+            agentId,
+            manualReason,
+            reasonDetail,
+            customerPhone
+        );
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -647,11 +742,13 @@ app.get('/api/assignment/agent/:agentId/tasks', async(req, res) => {
     try {
         const { agentId } = req.params;
         const { status, type, searchText } = req.query;
-        const tasks = await agentAssignmentService.getTasksByAgentDetailed(agentId, {
-            status,
-            type,
-            searchText
-        });
+        const tasks = await agentAssignmentService.getTasksByAgentDetailed(
+            agentId, {
+                status,
+                type,
+                searchText,
+            }
+        );
         res.json(tasks);
     } catch (error) {
         console.error('Error fetching agent tasks:', error);
@@ -661,14 +758,15 @@ app.get('/api/assignment/agent/:agentId/tasks', async(req, res) => {
 
 app.get('/api/assignment/tasks', async(req, res) => {
     try {
-        const { agentId, status, type, assignedOnly, unassignedOnly, searchText } = req.query;
+        const { agentId, status, type, assignedOnly, unassignedOnly, searchText } =
+        req.query;
         const tasks = await agentAssignmentService.getAllTasksWithAgent({
             agentId,
             status,
             type,
             assignedOnly,
             unassignedOnly,
-            searchText
+            searchText,
         });
         res.json(tasks);
     } catch (error) {
@@ -690,7 +788,8 @@ app.get('/api/assignment/summary', async(req, res) => {
 app.get('/api/assignment/performance', async(req, res) => {
     try {
         const { agentId } = req.query;
-        const metrics = await agentAssignmentService.getAgentPerformanceMetrics(agentId);
+        const metrics =
+            await agentAssignmentService.getAgentPerformanceMetrics(agentId);
         res.json(metrics);
     } catch (error) {
         console.error('Error fetching agent performance:', error);
@@ -749,11 +848,11 @@ app.put('/api/exceptions/:id/resolve', async(req, res) => {
         const { id } = req.params;
         const { resolution, resolvedBy } = req.body;
         const pool = await getConnection();
-        await pool.request()
+        await pool
+            .request()
             .input('id', id)
             .input('resolution', resolution || 'Resolved by supervisor')
-            .input('resolvedBy', resolvedBy)
-            .query(`
+            .input('resolvedBy', resolvedBy).query(`
                 UPDATE EXCEPTIONS
                 SET 
                     status = 'RESOLVED',
@@ -769,6 +868,15 @@ app.put('/api/exceptions/:id/resolve', async(req, res) => {
     }
 });
 
+app.get('/api/dashboard/exception-by-type', async(req, res) => {
+    try {
+        const data = await dashboardService.getExceptionByType();
+        res.json(data);
+    } catch (error) {
+        console.error('Error fetching exception by type:', error);
+        res.status(500).json({ error: 'Failed to fetch exception data' });
+    }
+});
 // ============ AUDIT LOG ROUTES ============
 app.get('/api/audit/logs', async(req, res) => {
     try {
@@ -803,25 +911,31 @@ app.post('/api/audit/log', async(req, res) => {
 app.get('/api/debug/users', async(req, res) => {
     try {
         const pool = await getConnection();
-        const result = await pool.request().query(
-            `SELECT user_id, username, role, verification_type, status FROM USERS`
-        );
+        const result = await pool
+            .request()
+            .query(
+                `SELECT user_id, username, role, verification_type, status FROM USERS`
+            );
         res.json({
             total: result.recordset.length,
-            users: result.recordset
+            users: result.recordset,
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
+// ============ CALLBACK ROUTES ============
+app.use('/api/callbacks', callbackRoutes);
+
 // ============ START SERVER ============
 const startServer = async() => {
     try {
+        console.log('🔌 Connecting to database...');
         await getConnection();
         console.log('✅ Database connected');
 
-        // Connect PBX
+        // Connect PBX (optional)
         try {
             const pbxConnected = await pbxService.connect();
             if (pbxConnected) {
@@ -829,23 +943,54 @@ const startServer = async() => {
                 io.emit('pbx:status', { connected: true, activeCalls: 0 });
             } else {
                 console.log('⚠️ PBX connection failed - Click-to-Call will not work');
-                io.emit('pbx:status', { connected: false, activeCalls: 0, error: 'PBX connection failed' });
+                io.emit('pbx:status', {
+                    connected: false,
+                    activeCalls: 0,
+                    error: 'PBX connection failed',
+                });
             }
         } catch (pbxError) {
             console.log('⚠️ PBX not available:', pbxError.message);
-            io.emit('pbx:status', { connected: false, activeCalls: 0, error: pbxError.message });
+            io.emit('pbx:status', {
+                connected: false,
+                activeCalls: 0,
+                error: pbxError.message,
+            });
         }
 
-        // Start server with Socket.IO
-        server.listen(PORT, () => {
+        // Start server
+        server.listen(PORT, '0.0.0.0', () => {
             console.log(`🚀 Server running on http://localhost:${PORT}`);
+            console.log(`🌐 External access: http://0.0.0.0:${PORT}`);
             console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
             console.log(`🔌 Socket.IO ready on port ${PORT}`);
+        });
+
+        // Handle server errors
+        server.on('error', (error) => {
+            if (error.code === 'EADDRINUSE') {
+                console.error(
+                    `❌ Port ${PORT} is already in use. Please kill the process using this port.`
+                );
+                console.log('💡 Try changing PORT in .env file');
+                process.exit(1);
+            } else {
+                console.error('❌ Server error:', error);
+            }
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
         process.exit(1);
     }
 };
+
+// Handle process termination
+process.on('SIGINT', () => {
+    console.log('🛑 Shutting down server...');
+    server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+    });
+});
 
 startServer();

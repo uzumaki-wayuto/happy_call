@@ -240,6 +240,7 @@ export const dashboardService = {
     getTopBranches: async() => {
         try {
             const pool = await getConnection();
+
             const result = await pool.request().query(`
                 SELECT TOP 5
                     b.branch_name as name,
@@ -255,25 +256,25 @@ export const dashboardService = {
                 HAVING COUNT(t.task_id) > 0
                 ORDER BY completionRate DESC
             `);
-
+            console.log('✅ Top branches fetched:', result.recordset.length);
             if (result.recordset.length === 0) {
                 return [
-                    { name: 'Yangon Division', completionRate: 0.0 },
-                    { name: 'Ayeyarwady Division', completionRate: 0.0 },
-                    { name: 'Magway Division', completionRate: 0.0 },
-                    { name: 'Shan State', completionRate: 0.0 },
-                    { name: ' --- Division', completionRate: 0.0 },
+                    { name: 'Yangon', completionRate: 0.0 },
+                    { name: 'Ayeyarwady', completionRate: 0.0 },
+                    { name: 'Magway', completionRate: 0.0 },
+                    { name: 'Mandalay', completionRate: 0.0 },
+                    { name: 'Myanmar', completionRate: 0.0 },
                 ];
             }
             return result.recordset;
         } catch (error) {
             console.log('Error fetching branches, using fallback:', error.message);
             return [
-                { name: 'Yangon Division', completionRate: 0.0 },
-                { name: 'Ayeyarwady Division', completionRate: 0.0 },
-                { name: 'Magway Division', completionRate: 0.0 },
-                { name: 'Shan State', completionRate: 0.0 },
-                { name: ' --- Division', completionRate: 0.0 },
+                { name: 'Yangon', completionRate: 1.0 },
+                { name: 'Ayeyarwady', completionRate: 1.0 },
+                { name: 'Magway', completionRate: 1.0 },
+                { name: 'Mandalay', completionRate: 1.0 },
+                { name: 'Myanmar', completionRate: 1.0 },
             ];
         }
     },
@@ -344,13 +345,14 @@ export const dashboardService = {
                 WHERE result = 'DISPUTED'
                 AND dispute_reason IS NOT NULL
                 GROUP BY dispute_reason
+                ORDER BY COUNT(*) DESC
             `);
 
             if (result.recordset.length === 0) {
                 return [
-                    { name: 'Amount Mismatch', value: 45, percent: 45 },
-                    { name: 'Not Received', value: 30, percent: 30 },
-                    { name: 'Other', value: 25, percent: 25 },
+                    { name: 'Amount Mismatch', value: 0, percent: 0 },
+                    { name: 'Not Received', value: 0, percent: 0 },
+                    { name: 'Other', value: 0, percent: 0 },
                 ];
             }
 
@@ -360,7 +362,7 @@ export const dashboardService = {
                 percent: total > 0 ? (r.value / total) * 100 : 0,
             }));
         } catch (error) {
-            console.log('Error fetching exceptions, using fallback:', error.message);
+            console.log('Error fetching exceptions by type:', error.message);
             return [
                 { name: 'Amount Mismatch', value: 0, percent: 0 },
                 { name: 'Not Received', value: 0, percent: 0 },
@@ -369,77 +371,29 @@ export const dashboardService = {
         }
     },
 
-    // ============ CRITICAL EXCEPTIONS ============
+    // ============ CRITICAL EXCEPTIONS - Simple Version ============
     getCriticalExceptions: async() => {
         try {
             const pool = await getConnection();
             const result = await pool.request().query(`
-                SELECT TOP 5
-                    a.attempt_id as id,
-                    FORMAT(a.created_at, 'HH:mm') as time,
-                    l.customer_name as customer,
-                    t.loan_id as loanId,
-                    a.dispute_reason as reason
-                FROM CALL_ATTEMPTS a
-                JOIN VERIFICATION_TASKS t ON a.task_id = t.task_id
-                JOIN LOANS l ON t.loan_id = l.loan_id
-                WHERE a.result = 'DISPUTED'
-                ORDER BY a.created_at DESC
-            `);
+            SELECT TOP 5
+                a.attempt_id as id,
+                FORMAT(a.created_at, 'HH:mm') as time,
+                l.customer_name as customer,
+                t.loan_id as loanId,
+                a.dispute_reason as reason
+            FROM CALL_ATTEMPTS a
+            JOIN VERIFICATION_TASKS t ON a.task_id = t.task_id
+            JOIN LOANS l ON t.loan_id = l.loan_id
+            WHERE a.result = 'DISPUTED'
+            ORDER BY a.created_at DESC
+        `);
 
-            if (result.recordset.length === 0) {
-                return [{
-                        id: 1,
-                        time: '09:15',
-                        customer: 'John Dela Cruz',
-                        loanId: 'LN-2026-00123',
-                        reason: 'Amount Mismatch',
-                    },
-                    {
-                        id: 2,
-                        time: '08:45',
-                        customer: 'Maria Santos',
-                        loanId: 'LN-2026-00456',
-                        reason: 'Not Received',
-                    },
-                    {
-                        id: 3,
-                        time: '08:20',
-                        customer: 'Jose Rizal',
-                        loanId: 'LN-2026-00789',
-                        reason: 'Other',
-                    },
-                ];
-            }
-
-            return result.recordset;
+            // Return empty array when no data
+            return result.recordset || [];
         } catch (error) {
-            console.log(
-                'Error fetching critical exceptions, using fallback:',
-                error.message
-            );
-            return [{
-                    id: 1,
-                    time: '09:15',
-                    customer: 'John Dela Cruz',
-                    loanId: 'LN-2026-00123',
-                    reason: 'Amount Mismatch',
-                },
-                {
-                    id: 2,
-                    time: '08:45',
-                    customer: 'Maria Santos',
-                    loanId: 'LN-2026-00456',
-                    reason: 'Not Received',
-                },
-                {
-                    id: 3,
-                    time: '08:20',
-                    customer: 'Jose Rizal',
-                    loanId: 'LN-2026-00789',
-                    reason: 'Other',
-                },
-            ];
+            console.error('Error fetching critical exceptions:', error.message);
+            return [];
         }
     },
 };

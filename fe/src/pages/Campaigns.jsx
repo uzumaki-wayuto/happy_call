@@ -33,11 +33,12 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 import { campaignApi } from '../api/campaignApi';
-
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -56,6 +57,9 @@ const Campaigns = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [campaigns, setCampaigns] = useState([]);
 
+  // In the Campaigns component, add state for selected campaign loans
+  const [selectedCampaignLoans, setSelectedCampaignLoans] = useState([]);
+  const [showLoansModal, setShowLoansModal] = useState(false);
   // ✅ Fetch campaigns from API
   const fetchCampaigns = async () => {
     setLoading(true);
@@ -63,14 +67,14 @@ const Campaigns = () => {
       const params = {};
       if (statusFilter !== 'all') params.status = statusFilter;
       if (typeFilter !== 'all') params.type = typeFilter;
-      
+
       const response = await campaignApi.getCampaigns(params);
       const data = response.data || [];
       setCampaigns(data);
     } catch (error) {
       console.error('❌ Error fetching campaigns:', error);
       message.error('Failed to load campaigns');
-       setCampaigns([]);
+      setCampaigns([]);
     } finally {
       setLoading(false);
     }
@@ -85,7 +89,7 @@ const Campaigns = () => {
   const activeCampaigns = campaigns.filter((c) => c.status === 'ACTIVE').length;
   const completedCampaigns = campaigns.filter((c) => c.status === 'COMPLETED').length;
   const draftCampaigns = campaigns.filter((c) => c.status === 'DRAFT').length;
-   const pausedCampaigns = campaigns.filter((c) => c.status === 'PAUSED').length;
+  const pausedCampaigns = campaigns.filter((c) => c.status === 'PAUSED').length;
   const totalLoans = campaigns.reduce((sum, c) => sum + (c.totalLoans || 0), 0);
   const totalCompleted = campaigns.reduce((sum, c) => sum + (c.completed || 0), 0);
   const overallCompletion = totalLoans > 0 ? ((totalCompleted / totalLoans) * 100).toFixed(1) : 0;
@@ -109,31 +113,43 @@ const Campaigns = () => {
   const handleAddCampaign = () => {
     setEditingCampaign(null);
     form.resetFields();
-    form.setFieldsValue({status: 'DRAFT',
-      totalLoans: 0  });
+    form.setFieldsValue({ status: 'DRAFT', totalLoans: 0 });
     setIsModalOpen(true);
   };
 
-const handleEditCampaign = (record) => {
-  setEditingCampaign(record);
-  form.setFieldsValue({
-    name: record.name,
-    type: record.type,
-    totalLoans: record.totalLoans,
+  const handleEditCampaign = (record) => {
+    setEditingCampaign(record);
+    form.setFieldsValue({
+      name: record.name,
+      type: record.type,
+      totalLoans: record.totalLoans,
       startDate: record.startDate ? dayjs(record.startDate) : null,
       endDate: record.endDate ? dayjs(record.endDate) : null,
       description: record.description,
       status: record.status,
-  });
-  setIsModalOpen(true);
-};
+    });
+    setIsModalOpen(true);
+  };
 
   const handleView = (record) => {
     setSelectedCampaign(record);
     setIsViewModalOpen(true);
   };
 
-   const handleSave = async (values) => {
+ // ✅ View Loans handler
+  const handleViewLoans = async (record) => {
+    setSelectedCampaign(record);
+    try {
+      const response = await campaignApi.getCampaignLoans(record.id);
+      setSelectedCampaignLoans(response.data || []);
+      setShowLoansModal(true);
+    } catch (error) {
+      console.error('Error fetching campaign loans:', error);
+      message.error('Failed to load campaign loans');
+    }
+  };
+
+  const handleSave = async (values) => {
     try {
       const formattedValues = {
         name: values.name,
@@ -153,7 +169,7 @@ const handleEditCampaign = (record) => {
         await campaignApi.createCampaign(formattedValues);
         message.success('Campaign created successfully!');
       }
-      
+
       setIsModalOpen(false);
       fetchCampaigns(); // Refresh list
     } catch (error) {
@@ -199,39 +215,130 @@ const handleEditCampaign = (record) => {
     });
   };
 
-
-
   const handleExport = () => {
-
-     if (campaigns.length === 0) {
+    if (campaigns.length === 0) {
       message.warning('No campaigns to export');
       return;
     }
 
-  const exportData = campaigns.map((campaign) => ({
-    'Campaign Name': campaign.name,
-    'Type': campaign.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
-    'Total Loans': campaign.totalLoans,
-    'Assigned': campaign.assigned,
-    'Completed': campaign.completed,
-    'Confirmed': campaign.confirmed,
-    'Disputed': campaign.disputed,
-    'Status': campaign.status,
-    'Start Date': campaign.startDate,
-    'End Date': campaign.endDate,
-  }));
+    const exportData = campaigns.map((campaign) => ({
+      'Campaign Name': campaign.name,
+      Type: campaign.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
+      'Total Loans': campaign.totalLoans,
+      Assigned: campaign.assigned,
+      Completed: campaign.completed,
+      Confirmed: campaign.confirmed,
+      Disputed: campaign.disputed,
+      Status: campaign.status,
+      'Start Date': campaign.startDate,
+      'End Date': campaign.endDate,
+    }));
 
-  try {
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    XLSX.utils.book_append_sheet(wb, ws, 'Campaigns');
-    XLSX.writeFile(wb, `campaigns_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    message.success('Campaign data exported successfully!');
-  } catch (error) {
-    console.error('Export error:', error);
-    message.error('Failed to export campaign data.');
-  }
-};
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Campaigns');
+      XLSX.writeFile(wb, `campaigns_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      message.success('Campaign data exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      message.error('Failed to export campaign data.');
+    }
+  };
+
+  // ✅ Export loans for a specific campaign
+  const exportCampaignLoans = (loans) => {
+    if (!loans || loans.length === 0) {
+      message.warning('No loans to export');
+      return;
+    }
+
+    const exportData = loans.map((loan) => ({
+      'Loan ID': loan.loanId,
+      'Customer Name': loan.customerName,
+      Phone: loan.phone,
+      Amount: loan.amount || 0,
+      Branch: loan.branch || '',
+      'Loan Officer': loan.loanOfficer || '',
+      'Disbursement Date': loan.disbursementDate || '',
+      'Maturity Date': loan.maturityDate || '',
+      'Task Type': loan.taskType || '',
+      'Task Status': loan.taskStatus || '',
+      Attempts: loan.attempts || 0,
+      'Assigned Agent': loan.agentName || 'Unassigned',
+    }));
+
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Campaign Loans');
+
+      // Generate filename with campaign name
+      const campaignName = selectedCampaign?.name || 'campaign';
+      const fileName = `${campaignName.replace(/\s/g, '_')}_loans_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      XLSX.writeFile(wb, fileName);
+      message.success(`Exported ${loans.length} loans successfully!`);
+    } catch (error) {
+      console.error('Export error:', error);
+      message.error('Failed to export loan data.');
+    }
+  };
+
+  // Add columns for loan details modal
+  const loanColumns = [
+    {
+      title: 'Loan ID',
+      dataIndex: 'loanId',
+      key: 'loanId',
+      width: 140,
+    },
+    {
+      title: 'Customer',
+      dataIndex: 'customerName',
+      key: 'customerName',
+      width: 180,
+    },
+    {
+      title: 'Phone',
+      dataIndex: 'phone',
+      key: 'phone',
+      width: 140,
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 130,
+      render: (amount) => formatCurrency(amount),
+    },
+    {
+      title: 'Branch',
+      dataIndex: 'branch',
+      key: 'branch',
+      width: 120,
+    },
+    {
+      title: 'Task Status',
+      dataIndex: 'taskStatus',
+      key: 'taskStatus',
+      width: 130,
+      render: (status) => {
+        const statusMap = {
+          CONFIRMED: { color: 'green', text: 'Confirmed' },
+          DISPUTED: { color: 'red', text: 'Disputed' },
+          NO_CONTACT: { color: 'gold', text: 'No Contact' },
+          ASSIGNED: { color: 'blue', text: 'Assigned' },
+          IN_PROGRESS: { color: 'orange', text: 'In Progress' },
+          PENDING: { color: 'default', text: 'Pending' },
+          ESCALATED: { color: 'magenta', text: 'Escalated' },
+          CLOSED: { color: 'default', text: 'Closed' },
+        };
+        const info = statusMap[status] || { color: 'default', text: status };
+        return <Badge color={info.color} text={info.text} />;
+      },
+    },
+  ];
 
   const columns = [
     {
@@ -239,9 +346,7 @@ const handleEditCampaign = (record) => {
       dataIndex: 'name',
       key: 'name',
       width: 220,
-      render: (text, record) => (
-        <a onClick={() => handleView(record)}>{text}</a>
-      ),
+      render: (text, record) => <a onClick={() => handleView(record)}>{text}</a>,
     },
     {
       title: 'Type',
@@ -254,7 +359,14 @@ const handleEditCampaign = (record) => {
         </Tag>
       ),
     },
-   {
+    {
+      title: 'Loans',
+      dataIndex: 'loanCount',
+      key: 'loanCount',
+      width: 80,
+      render: (text, record) => <Badge count={record.actualLoans || 0} showZero />,
+    },
+    {
       title: 'Progress',
       key: 'progress',
       width: 150,
@@ -271,7 +383,7 @@ const handleEditCampaign = (record) => {
       },
     },
 
-     {
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
@@ -295,11 +407,19 @@ const handleEditCampaign = (record) => {
         <Space size="small">
           <Button
             type="link"
-            icon={<EyeOutlined />}
+            icon={<FileTextOutlined />}
             onClick={() => handleView(record)}
             size="small"
           >
             View
+          </Button>
+          <Button
+            type="link"
+            icon={<FileTextOutlined />}
+            onClick={() => handleViewLoans(record)}
+            size="small"
+          >
+            Loans ({record.actualLoans || 0})
           </Button>
           <Button
             type="link"
@@ -310,21 +430,12 @@ const handleEditCampaign = (record) => {
             Edit
           </Button>
           {record.status === 'ACTIVE' && (
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleCloseCampaign(record)}
-            >
+            <Button type="link" size="small" onClick={() => handleCloseCampaign(record)}>
               Close
             </Button>
           )}
           {record.status === 'DRAFT' && (
-            <Button
-              type="link"
-              danger
-              size="small"
-              onClick={() => handleDeleteCampaign(record)}
-            >
+            <Button type="link" danger size="small" onClick={() => handleDeleteCampaign(record)}>
               Delete
             </Button>
           )}
@@ -335,7 +446,9 @@ const handleEditCampaign = (record) => {
 
   if (loading && campaigns.length === 0) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}
+      >
         <Spin size="large" tip="Loading campaigns..." />
       </div>
     );
@@ -343,17 +456,22 @@ const handleEditCampaign = (record) => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>Campaign Management</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Campaign Management
+        </Title>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={fetchCampaigns}>
             Refresh
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddCampaign}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddCampaign}>
             New Campaign
           </Button>
           <Button icon={<FileExcelOutlined />} onClick={handleExport}>
@@ -361,11 +479,10 @@ const handleEditCampaign = (record) => {
           </Button>
         </Space>
       </div>
-
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Create and manage verification campaigns. Each campaign represents a batch of loans to be verified.
+        Create and manage verification campaigns. Each campaign represents a batch of loans to be
+        verified.
       </Text>
-
       {/* KPI Cards */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}>
@@ -420,7 +537,6 @@ const handleEditCampaign = (record) => {
           </Card>
         </Col>
       </Row>
-
       {/* Filters */}
       <Card style={{ marginBottom: 16 }}>
         <Space wrap size="middle">
@@ -462,7 +578,6 @@ const handleEditCampaign = (record) => {
           </Button>
         </Space>
       </Card>
-
       {/* Campaigns Table */}
       <Card>
         <Table
@@ -474,7 +589,6 @@ const handleEditCampaign = (record) => {
           locale={{ emptyText: 'No campaigns found. Create a new campaign to get started.' }}
         />
       </Card>
-
       {/* Add/Edit Campaign Modal */}
       <Modal
         title={editingCampaign ? 'Edit Campaign' : 'New Campaign'}
@@ -509,7 +623,7 @@ const handleEditCampaign = (record) => {
             label="Total Loans"
             rules={[{ required: true, message: 'Please enter total loans' }]}
           >
-           <InputNumber
+            <InputNumber
               style={{ width: '100%' }}
               placeholder="Enter total number of loans"
               min={0}
@@ -537,10 +651,7 @@ const handleEditCampaign = (record) => {
             </Col>
           </Row>
 
-          <Form.Item
-            name="description"
-            label="Description"
-          >
+          <Form.Item name="description" label="Description">
             <TextArea rows={3} placeholder="Enter campaign description..." />
           </Form.Item>
 
@@ -566,7 +677,6 @@ const handleEditCampaign = (record) => {
           </Form.Item>
         </Form>
       </Modal>
-
       {/* View Campaign Modal */}
       <Modal
         title="Campaign Details"
@@ -615,7 +725,7 @@ const handleEditCampaign = (record) => {
                   text={statusMap[selectedCampaign.status]?.text || selectedCampaign.status}
                 />
               </Col>
-               <Col span={12}>
+              <Col span={12}>
                 <Text strong>Total Loans: </Text>
                 {selectedCampaign.totalLoans || 0}
               </Col>
@@ -671,13 +781,47 @@ const handleEditCampaign = (record) => {
 
             <div style={{ marginTop: 16 }}>
               <Progress
-                percent={selectedCampaign.totalLoans > 0 ? (selectedCampaign.completed / selectedCampaign.totalLoans) * 100 : 0}
+                percent={
+                  selectedCampaign.totalLoans > 0
+                    ? (selectedCampaign.completed / selectedCampaign.totalLoans) * 100
+                    : 0
+                }
                 strokeColor={selectedCampaign.status === 'COMPLETED' ? '#52c41a' : '#1890ff'}
-                format={() => `${selectedCampaign.totalLoans > 0 ? ((selectedCampaign.completed / selectedCampaign.totalLoans) * 100).toFixed(0) : 0}% Complete`}
+                format={() =>
+                  `${selectedCampaign.totalLoans > 0 ? ((selectedCampaign.completed / selectedCampaign.totalLoans) * 100).toFixed(0) : 0}% Complete`
+                }
               />
             </div>
           </div>
         )}
+      </Modal>
+       {/* Add Loans Modal */}
+      <Modal
+        title={`Loans in "${selectedCampaign?.name}"`}
+        open={showLoansModal}
+        onCancel={() => setShowLoansModal(false)}
+        width={900}
+        footer={[
+          <Button key="close" onClick={() => setShowLoansModal(false)}>
+            Close
+          </Button>,
+          <Button
+            key="export"
+            icon={<FileExcelOutlined />}
+            onClick={() => exportCampaignLoans(selectedCampaignLoans)}
+          >
+            Export
+          </Button>,
+        ]}
+      >
+        <Table
+          columns={loanColumns}
+          dataSource={selectedCampaignLoans}
+          rowKey="loanId"
+          pagination={{ pageSize: 10 }}
+          size="small"
+          scroll={{ x: 800 }}
+        />
       </Modal>
     </div>
   );

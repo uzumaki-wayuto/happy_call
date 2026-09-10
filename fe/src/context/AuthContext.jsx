@@ -31,10 +31,17 @@ export const AuthProvider = ({ children }) => {
       verificationType: userData.verificationType || userData.verification_type || 'DISBURSEMENT',
       pbxExtension: userData.pbxExtension || userData.pbx_extension || '2001',
     });
+
+     // ✅ Store token in localStorage
+        if (userData.token) {
+            localStorage.setItem('token', userData.token);
+        }
+    
   };
 
   const logout = () => {
     setUser(null);
+     localStorage.removeItem('token');
   };
 
   const isAuthenticated = !!user;

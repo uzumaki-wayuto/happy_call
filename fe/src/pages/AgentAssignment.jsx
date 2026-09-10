@@ -33,6 +33,7 @@ import {
 import { taskApi } from '../api/taskApi';
 import { userApi } from '../api/userApi';
 import { useAuth } from '../context/AuthContext';
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -187,7 +188,7 @@ const AgentAssignment = () => {
             dataIndex: 'amount',
             key: 'amount',
             width: 130,
-            render: (amount) => `₱${amount?.toLocaleString() || 0}`,
+            render: (amount) => formatCurrency(amount),
         },
         {
             title: 'Created',

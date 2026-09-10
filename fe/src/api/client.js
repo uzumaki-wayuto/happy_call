@@ -10,6 +10,7 @@ const api = axios.create({
         'Content-Type': 'application/json',
     },
     timeout: 30000,
+    withCredentials: true,
 });
 
 // Add token to requests
@@ -25,6 +26,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        if (error.code === 'ERR_NETWORK') {
+            console.error('Network error - is the server running?');
+            console.log('it reaches to client.js');
+            // You can show a user-friendly message here
+        }
         if (error.response && error.response.status === 401) {
             localStorage.removeItem('token');
             window.location.href = '/login';

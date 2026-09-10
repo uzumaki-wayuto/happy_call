@@ -1,5 +1,5 @@
 // src/pages/Callbacks.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   Table,
@@ -18,6 +18,8 @@ import {
   Col,
   Statistic,
   Divider,
+  Empty,
+  Spin,
 } from 'antd';
 import {
   CalendarOutlined,
@@ -30,6 +32,8 @@ import {
   FileExcelOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
+import { callbackApi } from '../api/callbackApi';
+import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 
 const { Title, Text } = Typography;
@@ -38,6 +42,9 @@ const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 
 const Callbacks = () => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [callbacks, setCallbacks] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedCallback, setSelectedCallback] = useState(null);
@@ -47,84 +54,51 @@ const Callbacks = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [dateRange, setDateRange] = useState(null);
 
-  // Mock callbacks data
-  const [callbacks, setCallbacks] = useState([
-    {
-      id: 1,
-      customerName: 'John Dela Cruz',
-      loanId: 'LN-2026-00123',
-      phone: '0998-123-4567',
-      type: 'DISBURSEMENT',
-      callbackDate: '2026-08-31',
-      callbackTime: '10:00',
-      reason: 'Customer busy',
-      notes: 'Customer requested to call tomorrow at 10 AM.',
-      status: 'PENDING',
-      assignedTo: 'Agent01 (You)',
-      createdAt: '2026-08-30 09:15',
-    },
-    {
-      id: 2,
-      customerName: 'Maria Santos',
-      loanId: 'LN-2026-00456',
-      phone: '0917-765-4321',
-      type: 'DEPOSIT',
-      callbackDate: '2026-08-31',
-      callbackTime: '14:30',
-      reason: 'Line dropped',
-      notes: 'Connection dropped during verification. Call back to complete.',
-      status: 'PENDING',
-      assignedTo: 'Agent02 (Mary)',
-      createdAt: '2026-08-30 10:30',
-    },
-    {
-      id: 3,
-      customerName: 'Jose Rizal',
-      loanId: 'LN-2026-00789',
-      phone: '0908-987-6543',
-      type: 'DISBURSEMENT',
-      callbackDate: '2026-08-30',
-      callbackTime: '09:00',
-      reason: 'No answer',
-      notes: 'Called 3 times but no answer. Will try again tomorrow.',
-      status: 'COMPLETED',
-      assignedTo: 'Agent01 (You)',
-      createdAt: '2026-08-29 17:30',
-    },
-    {
-      id: 4,
-      customerName: 'Andres Bonifacio',
-      loanId: 'LN-2026-00100',
-      phone: '0922-111-2222',
-      type: 'DEPOSIT',
-      callbackDate: '2026-08-30',
-      callbackTime: '16:00',
-      reason: 'Switched off',
-      notes: 'Phone switched off. Will try again tomorrow.',
-      status: 'CANCELLED',
-      assignedTo: 'Agent01 (You)',
-      createdAt: '2026-08-29 15:45',
-    },
-    {
-      id: 5,
-      customerName: 'Emilio Aguinaldo',
-      loanId: 'LN-2026-00200',
-      phone: '0918-555-6789',
-      type: 'DISBURSEMENT',
-      callbackDate: '2026-09-01',
-      callbackTime: '11:00',
-      reason: 'Customer requested',
-      notes: 'Customer asked to call on September 1st for confirmation.',
-      status: 'PENDING',
-      assignedTo: 'Agent03 (David)',
-      createdAt: '2026-08-30 08:00',
-    },
-  ]);
-
   // Get current user role (mock)
   const userRole = 'AGENT'; // 'AGENT' or 'SUPERVISOR'
-  const isSupervisor = userRole === 'SUPERVISOR';
+  const SUPERVISOR_ROLES = ['SUPERVISOR', 'supervisor', 'Supervisor'];
+  const isSupervisor = SUPERVISOR_ROLES.includes(user?.role);
 
+  // ✅ Fetch callbacks from API
+  const fetchCallbacks = async () => {
+    setLoading(true);
+    try {
+      const params = {
+        ...(isSupervisor ? {} : { agentId: user?.id }),
+        ...(statusFilter !== 'all' && { status: statusFilter }),
+        ...(typeFilter !== 'all' && { type: typeFilter }),
+      };
+      console.log(' fetching params:', params);
+      console.log(' isSupervisor:' , isSupervisor);
+      console.log('user:', user);
+
+      const response = await callbackApi.getCallbacks(params);
+
+      // Handle both shapes: raw array OR {data: [...]}
+      const res = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : [];
+          
+      setCallbacks(res);
+    } catch (error) {
+      console.error('Error fetching callbacks:', error);
+      message.error('Failed to load callbacks');
+      setCallbacks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCallbacks();
+  }, [statusFilter, typeFilter]);
+
+  useEffect(() => {
+    console.log(' callbacks state changed:', callbacks);
+  }, [callbacks]);
+  
   // Statistics
   const totalCallbacks = callbacks.length;
   const pendingCallbacks = callbacks.filter((c) => c.status === 'PENDING').length;
@@ -133,10 +107,7 @@ const Callbacks = () => {
 
   // Filter callbacks
   const filteredCallbacks = callbacks.filter((callback) => {
-    // For agent, show only their callbacks
-    if (!isSupervisor && callback.assignedTo !== 'Agent01 (You)') return false;
-
-    // Search filter
+      // Search filter
     if (searchText) {
       const search = searchText.toLowerCase();
       const match =
@@ -178,13 +149,15 @@ const Callbacks = () => {
       title: 'Mark as Completed',
       content: `Mark callback for ${record.customerName} as completed?`,
       okText: 'Yes, Complete',
-      onOk: () => {
-        setCallbacks((prev) =>
-          prev.map((c) =>
-            c.id === record.id ? { ...c, status: 'COMPLETED' } : c
-          )
-        );
-        message.success('Callback marked as completed.');
+      onOk: async () => {
+        try {
+          await callbackApi.updateCallback(record.id, { status: 'COMPLETED' });
+          message.success('Callback marked as completed.');
+          fetchCallbacks();
+        } catch (error) {
+          console.error('Error completing callback:', error);
+          message.error('Failed to complete callback');
+        }
       },
     });
   };
@@ -195,43 +168,55 @@ const Callbacks = () => {
       content: `Cancel callback for ${record.customerName}?`,
       okText: 'Yes, Cancel',
       okType: 'danger',
-      onOk: () => {
-        setCallbacks((prev) =>
-          prev.map((c) =>
-            c.id === record.id ? { ...c, status: 'CANCELLED' } : c
-          )
-        );
-        message.warning('Callback cancelled.');
+      onOk: async () => {
+        try {
+          await callbackApi.updateCallback(record.id, { status: 'CANCELLED' });
+          message.warning('Callback cancelled.');
+          fetchCallbacks();
+        } catch (error) {
+          console.error('Error cancelling callback:', error);
+          message.error('Failed to cancel callback');
+        }
       },
     });
   };
 
-  const handleSave = (values) => {
-    const newCallback = {
-      id: callbacks.length + 1,
-      ...values,
-      status: 'PENDING',
-      assignedTo: 'Agent01 (You)',
-      createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    };
-    setCallbacks((prev) => [...prev, newCallback]);
-    setIsModalOpen(false);
-    message.success('Callback scheduled successfully!');
+  const handleSave = async (values) => {
+    try {
+      const newCallback = {
+        ...values,
+        status: 'PENDING',
+        assignedTo: user?.id,
+        createdAt: new Date().toISOString(),
+      };
+      await callbackApi.createCallback(newCallback);
+      message.success('Callback scheduled successfully!');
+      setIsModalOpen(false);
+      fetchCallbacks();
+    } catch (error) {
+      console.error('Error creating callback:', error);
+      message.error('Failed to schedule callback');
+    }
   };
 
   const handleExport = () => {
+    if (callbacks.length === 0) {
+      message.warning('No callbacks to export');
+      return;
+    }
+
     try {
       const exportData = callbacks.map((callback) => ({
         'Customer Name': callback.customerName,
         'Loan ID': callback.loanId,
-        'Phone': callback.phone,
-        'Type': callback.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
+        Phone: callback.phone,
+        Type: callback.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
         'Callback Date': callback.callbackDate,
         'Callback Time': callback.callbackTime,
-        'Reason': callback.reason,
-        'Status': callback.status,
+        Reason: callback.reason,
+        Status: callback.status,
         'Assigned To': callback.assignedTo,
-        'Notes': callback.notes || '',
+        Notes: callback.notes || '',
         'Created At': callback.createdAt,
       }));
 
@@ -347,18 +332,26 @@ const Callbacks = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>Callback Management</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Callback Management
+        </Title>
         <Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddCallback}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddCallback}>
             Schedule Callback
           </Button>
           <Button icon={<FileExcelOutlined />} onClick={handleExport}>
             Export
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchCallbacks} loading={loading}>
+            Refresh
           </Button>
         </Space>
       </div>
@@ -461,13 +454,33 @@ const Callbacks = () => {
 
       {/* Callbacks Table */}
       <Card>
-        <Table
-          columns={columns}
-          dataSource={filteredCallbacks}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-          bordered
-        />
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+            <Spin size="large" tip="Loading callbacks..." />
+          </div>
+        ) : filteredCallbacks.length === 0 ? (
+          <Empty
+            description={
+              <span>
+                <Text strong>No Callbacks</Text>
+                <br />
+                <Text type="secondary">
+                  {callbacks.length === 0
+                    ? 'No callbacks scheduled yet.'
+                    : 'No callbacks match your current filters.'}
+                </Text>
+              </span>
+            }
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={filteredCallbacks}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            bordered
+          />
+        )}
       </Card>
 
       {/* Schedule Callback Modal */}

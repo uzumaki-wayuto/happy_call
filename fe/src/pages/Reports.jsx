@@ -36,6 +36,7 @@ import {
 import { reportApi } from '../api/reportApi';
 import CallTrendChart from '../components/common/CallTrendChart';
 import * as XLSX from 'xlsx';
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -51,6 +52,8 @@ const Reports = () => {
   const [agentPerformance, setAgentPerformance] = useState([]);
   const [trendData, setTrendData] = useState([]);
   const [resultDistribution, setResultDistribution] = useState([]);
+  const [hasData, setHasData] = useState(false);
+
 
   // KPI calculations
   const totalTasks = agentPerformance.reduce((sum, a) => sum + (a.assigned || 0), 0);
@@ -76,12 +79,21 @@ const Reports = () => {
         reportApi.getTrendData(),
         reportApi.getResultDistribution(),
       ]);
-      setAgentPerformance(performanceRes.data || []);
-      setTrendData(trendRes.data || []);
-      setResultDistribution(distributionRes.data || []);
+       const performanceData = performanceRes.data || [];
+      const trendDataResult = trendRes.data || [];
+      const distributionData = distributionRes.data || [];
+       setAgentPerformance(performanceData);
+      setTrendData(trendDataResult);
+      setResultDistribution(distributionData);
+      
+      // Check if any data exists
+      const hasAnyData = performanceData.length > 0 || trendDataResult.length > 0 || distributionData.length > 0;
+      setHasData(hasAnyData);
+
     } catch (error) {
       console.error('Error fetching report data:', error);
       message.error('Failed to load report data');
+      setHasData(false);
     } finally {
       setLoading(false);
     }
@@ -119,6 +131,19 @@ const Reports = () => {
     { title: 'Completion %', dataIndex: 'completionRate', key: 'completionRate', width: 120, render: (rate) => `${(rate || 0).toFixed(1)}%` },
     { title: 'Avg Handle Time', dataIndex: 'avgHandleTime', key: 'avgHandleTime', width: 140, render: (time) => formatDuration(time || 0) },
   ];
+
+  // Update chart tooltips
+const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div>
+                <p>{label}</p>
+                <p>{formatCurrency(payload[0].value)}</p>
+            </div>
+        );
+    }
+    return null;
+};
 
   const handleExport = () => {
     const exportData = agentPerformance.map((agent) => ({

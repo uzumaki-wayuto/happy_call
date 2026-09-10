@@ -171,7 +171,7 @@ const CallHistory = () => {
       width: 140,
       render: (text, record) => {
     // Fallback to agent, then fullName, then user's name, then 'Unknown'
-    return text || record.agent || record.fullName || user?.fullName || 'Unknown';
+    return text || record.agent || record.fullName || user?.fullName;
   },
     },
     {

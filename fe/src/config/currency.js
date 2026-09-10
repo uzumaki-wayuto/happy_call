@@ -25,7 +25,8 @@ export const formatCurrency = (amount, currency = CURRENT_CURRENCY) => {
     try {
         const formatter = new Intl.NumberFormat(currency.locale, {
             style: 'currency',
-            currency: currency.code,
+            currency: currency.symbol,
+            format: currency.format,
             minimumFractionDigits: currency.decimalPlaces,
             maximumFractionDigits: currency.decimalPlaces,
         });

@@ -18,6 +18,8 @@ import {
   Row,
   Col,
   Statistic,
+  Empty,
+  Spin,
 } from 'antd';
 import {
   ExclamationCircleOutlined,
@@ -31,6 +33,7 @@ import {
 import { taskApi } from '../api/taskApi';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
+import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -56,76 +59,15 @@ const Exceptions = () => {
         status: 'DISPUTED,ESCALATED',
         type: 'all',
       });
-      
-      // If no data from API, use fallback mock data
-      const data = response.data || [];
-      if (data.length === 0) {
-        setExceptions(getFallbackExceptions());
-      } else {
-        setExceptions(data);
-      }
-    } catch (error) {
-      console.error('Error fetching exceptions:', error);
-      message.warning('Using fallback exception data');
-      setExceptions(getFallbackExceptions());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ Fallback mock data (if API fails)
-  const getFallbackExceptions = () => {
-    return [
-      {
-        id: 101,
-        loanId: 'LN-2026-00123',
-        customerName: 'John Dela Cruz',
-        phone: '0998-123-4567',
-        type: 'DISBURSEMENT',
-        amount: 150000,
-        status: 'DISPUTED',
-        severity: 'CRITICAL',
-        disputeReason: 'AMOUNT_MISMATCH',
-        description: 'Customer claims received only 8,000.00 MKR instead of 10,000.00 MKR',
-        reportedBy: 'Agent01',
-        reportedAt: new Date().toISOString(),
-        attempts: 3,
-        notes: 'Escalated to supervisor for investigation.',
-      },
-      {
-        id: 102,
-        loanId: 'LN-2026-00456',
-        customerName: 'Maria Santos',
-        phone: '0917-765-4321',
-        type: 'DEPOSIT',
-        amount: 25000,
-        status: 'ESCALATED',
-        severity: 'HIGH',
-        disputeReason: 'NOT_RECEIVED',
-        description: 'Customer says they never received the compulsory saving deposit.',
-        reportedBy: 'Agent02',
-        reportedAt: new Date().toISOString(),
-        attempts: 2,
-        notes: 'Customer is very upset. Requested branch investigation.',
-      },
-      {
-        id: 103,
-        loanId: 'LN-2026-00789',
-        customerName: 'Jose Rizal',
-        phone: '0908-987-6543',
-        type: 'DISBURSEMENT',
-        amount: 200000,
-        status: 'DISPUTED',
-        severity: 'MEDIUM',
-        disputeReason: 'OTHER',
-        description: 'Customer claims loan officer misrepresented loan terms.',
-        reportedBy: 'Agent03',
-        reportedAt: new Date().toISOString(),
-        attempts: 4,
-        notes: 'Waiting for loan officer\'s response.',
-      },
-    ];
-  };
+      setExceptions(response.data || []);
+  } catch (error) {
+    console.error('Error fetching exceptions:', error);
+    message.error('Failed to load exceptions');
+    setExceptions([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchExceptions();
@@ -224,17 +166,17 @@ const Exceptions = () => {
       const exportData = filteredExceptions.map((exception) => ({
         'Loan ID': exception.loanId,
         'Customer Name': exception.customerName,
-        'Phone': exception.phone,
-        'Type': exception.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
-        'Amount': exception.amount,
-        'Severity': exception.severity,
-        'Status': exception.status,
+        Phone: exception.phone,
+        Type: exception.type === 'DISBURSEMENT' ? 'Disbursement' : 'Deposit',
+        Amount: exception.amount,
+        Severity: exception.severity,
+        Status: exception.status,
         'Dispute Reason': exception.disputeReason,
-        'Description': exception.description,
+        Description: exception.description,
         'Reported By': exception.reportedBy,
         'Reported At': exception.reportedAt,
-        'Attempts': exception.attempts,
-        'Notes': exception.notes || '',
+        Attempts: exception.attempts,
+        Notes: exception.notes || '',
       }));
 
       const wb = XLSX.utils.book_new();
@@ -313,7 +255,7 @@ const Exceptions = () => {
       dataIndex: 'reportedAt',
       key: 'reportedAt',
       width: 160,
-      render: (date) => date ? new Date(date).toLocaleString() : '-',
+      render: (date) => (date ? new Date(date).toLocaleString() : '-'),
     },
     {
       title: 'Attempts',
@@ -362,10 +304,28 @@ const Exceptions = () => {
     },
   ];
 
+  
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Spin size="large" tip="Loading exceptions..." />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>Exception Management</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Exception Management
+        </Title>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={fetchExceptions} loading={loading}>
             Refresh
@@ -377,7 +337,8 @@ const Exceptions = () => {
       </div>
 
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        View and manage all disputed and escalated cases. Take action to resolve or escalate as needed.
+        View and manage all disputed and escalated cases. Take action to resolve or escalate as
+        needed.
       </Text>
 
       {/* KPI Cards */}
@@ -474,14 +435,27 @@ const Exceptions = () => {
 
       {/* Exceptions Table */}
       <Card>
-        <Table
-          columns={columns}
+         {exceptions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+            <Empty description="No exceptions found" />
+          </div>
+        ) : (
+          <Table
+            columns={[
+              { title: 'Loan ID', dataIndex: 'loanId', key: 'loanId', width: 140 },
+              { title: 'Customer', dataIndex: 'customerName', key: 'customerName', width: 180 },
+              { title: 'Severity', dataIndex: 'severity', key: 'severity', width: 110, render: (s) => <Tag color={severityMap[s]?.color}>{severityMap[s]?.text || s}</Tag> },
+              { title: 'Status', dataIndex: 'status', key: 'status', width: 120, render: (s) => <Badge color={statusMap[s]?.color} text={statusMap[s]?.text || s} /> },
+              { title: 'Reported By', dataIndex: 'reportedBy', key: 'reportedBy', width: 120 },
+              { title: 'Reported At', dataIndex: 'reportedAt', key: 'reportedAt', width: 160, render: (d) => d ? new Date(d).toLocaleString() : '-' },
+            ]}
           dataSource={filteredExceptions}
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}
           bordered
         />
+          )}
       </Card>
 
       {/* Exception Detail Modal */}
@@ -540,14 +514,20 @@ const Exceptions = () => {
                   <div>
                     <Text strong>Severity: </Text>
                     <Tag color={severityMap[selectedException.severity]?.color || 'default'}>
-                      {severityMap[selectedException.severity]?.text || selectedException.severity || 'Unknown'}
+                      {severityMap[selectedException.severity]?.text ||
+                        selectedException.severity ||
+                        'Unknown'}
                     </Tag>
                   </div>
                   <div>
                     <Text strong>Status: </Text>
                     <Badge
                       color={statusMap[selectedException.status]?.color || 'default'}
-                      text={statusMap[selectedException.status]?.text || selectedException.status || 'Unknown'}
+                      text={
+                        statusMap[selectedException.status]?.text ||
+                        selectedException.status ||
+                        'Unknown'
+                      }
                     />
                   </div>
                 </Card>
@@ -560,7 +540,9 @@ const Exceptions = () => {
                   </div>
                   <div>
                     <Text strong>Reported At: </Text>
-                    {selectedException.reportedAt ? new Date(selectedException.reportedAt).toLocaleString() : '-'}
+                    {selectedException.reportedAt
+                      ? new Date(selectedException.reportedAt).toLocaleString()
+                      : '-'}
                   </div>
                 </Card>
               </Col>
@@ -568,11 +550,15 @@ const Exceptions = () => {
 
             <Divider orientation="left">Customer Information</Divider>
             <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Customer Name">{selectedException.customerName || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Customer Name">
+                {selectedException.customerName || '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="Phone">{selectedException.phone || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Loan ID">{selectedException.loanId || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Loan ID">
+                {selectedException.loanId || '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="Loan Amount">
-                {selectedException.amount ? `₱${selectedException.amount.toLocaleString()}` : '-'}
+                {selectedException.amount ? formatCurrency(selectedException.amount) : '-'};
               </Descriptions.Item>
               <Descriptions.Item label="Type" span={2}>
                 <Tag color={selectedException.type === 'DISBURSEMENT' ? 'blue' : 'green'}>
@@ -584,7 +570,9 @@ const Exceptions = () => {
             <Divider orientation="left">Exception Details</Divider>
             <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="Dispute Reason">
-                {disputeReasonMap[selectedException.disputeReason] || selectedException.disputeReason || '-'}
+                {disputeReasonMap[selectedException.disputeReason] ||
+                  selectedException.disputeReason ||
+                  '-'}
               </Descriptions.Item>
               <Descriptions.Item label="Description">
                 {selectedException.description || '-'}

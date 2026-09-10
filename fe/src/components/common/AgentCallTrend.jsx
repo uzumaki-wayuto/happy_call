@@ -1,6 +1,6 @@
 // src/components/common/AgentCallTrend.jsx
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Radio, Typography, Spin, message, Button, Space } from 'antd';
+import { Card, Row, Col, Radio, Typography, Spin, message, Button, Space, Empty } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import {
   LineChart,
@@ -25,10 +25,12 @@ const AgentCallTrend = () => {
   const [data, setData] = useState([]);
   const [agentName, setAgentName] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [error, setError] = useState(null);
 
   // ✅ Fetch agent trend data from API
   const fetchData = async () => {
     if (!user?.id) return;
+    setError(null);
     setLoading(true);
     try {
       // Try to get real data from attempts
@@ -41,15 +43,16 @@ const AgentCallTrend = () => {
       if (processedData.length > 0) {
         setData(processedData);
       } else {
-        // Fallback to mock data
-        setData(generateFallbackData());
+        setError(
+          'No call data available for your account yet. Make some calls to see your performance!'
+        );
       }
 
       setAgentName(user.fullName || 'Agent');
     } catch (error) {
       console.error('Error fetching agent trend:', error);
+      setError('Failed to load your trend data. Please try again.');
       message.error('Failed to load your trend data');
-      setData(generateFallbackData());
       setAgentName(user.fullName || 'Agent');
     } finally {
       setLoading(false);
@@ -107,24 +110,6 @@ const AgentCallTrend = () => {
     if (result.every((r) => r.total === 0)) return [];
 
     return result;
-  };
-
-  // ✅ Fallback mock data generator
-  const generateFallbackData = () => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days
-      .map((day) => ({
-        day,
-        date: new Date().toISOString().slice(0, 10),
-        completed: Math.floor(Math.random() * 20) + 5,
-        exceptions: Math.floor(Math.random() * 5) + 1,
-        noContact: Math.floor(Math.random() * 8) + 2,
-        total: 0,
-      }))
-      .map((item) => ({
-        ...item,
-        total: item.completed + item.exceptions + item.noContact,
-      }));
   };
 
   useEffect(() => {
@@ -208,7 +193,7 @@ const AgentCallTrend = () => {
         </Space>
       }
     >
-      {data.length === 0 ? (
+      {error || data.length === 0 ? (
         <div
           style={{
             display: 'flex',
@@ -216,9 +201,20 @@ const AgentCallTrend = () => {
             alignItems: 'center',
             height: 250,
             color: '#999',
+            padding: '40px 20px',
           }}
         >
-          No trend data available for your account. Make some calls to see your performance!
+          <Empty
+            description={
+              <span>
+                <Text strong>No Call Data Available</Text>
+                <br />
+                <Text type="secondary">
+                  {error || 'Start making calls to see your performance trends here.'}
+                </Text>
+              </span>
+            }
+          />
         </div>
       ) : (
         <>
@@ -267,25 +263,25 @@ const AgentCallTrend = () => {
           </Row>
 
           {/* Best Day */}
-          <div
-            style={{
-              marginBottom: 16,
-              textAlign: 'center',
-              padding: 8,
-              background: '#fafafa',
-              borderRadius: 8,
-            }}
-          >
-            <Text>
-              🏆 Best Day: <strong>{stats.bestDay?.[xKey] || 'N/A'}</strong> with{' '}
-              {stats.bestDay
-                ? (stats.bestDay.completed || 0) +
+          {stats.bestDay && stats.bestDay[xKey] && (
+            <div
+              style={{
+                marginBottom: 16,
+                textAlign: 'center',
+                padding: 8,
+                background: '#fafafa',
+                borderRadius: 8,
+              }}
+            >
+              <Text>
+                🏆 Best Day: <strong>{stats.bestDay[xKey]}</strong> with{' '}
+                {(stats.bestDay.completed || 0) +
                   (stats.bestDay.exceptions || 0) +
-                  (stats.bestDay.noContact || 0)
-                : 0}{' '}
-              calls
-            </Text>
-          </div>
+                  (stats.bestDay.noContact || 0)}{' '}
+                calls
+              </Text>
+            </div>
+          )}
 
           {/* Chart */}
           <ResponsiveContainer width="100%" height={250}>
