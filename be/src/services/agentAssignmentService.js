@@ -226,8 +226,11 @@ export const agentAssignmentService = {
                 AND u.status = 'ACTIVE'
             `;
 
-            if (agentId) {
-                query += ` AND u.user_id = @agentId`;
+            if (agentId && agentId !== 'all') {
+                const numericId = parseInt(agentId, 10);
+                if (!isNaN(numericId)) {
+                    query += ` AND u.user_id = @agentId`;
+                }
             }
 
             query += `
@@ -236,8 +239,11 @@ export const agentAssignmentService = {
             `;
 
             const result = await pool.request();
-            if (agentId) {
-                result.input('agentId', agentId);
+            if (agentId && agentId !== 'all') {
+                const numericId = parseInt(agentId, 10);
+                if (!isNaN(numericId)) {
+                    result.input('agentId', numericId);
+                }
             }
             const data = await result.query(query);
 

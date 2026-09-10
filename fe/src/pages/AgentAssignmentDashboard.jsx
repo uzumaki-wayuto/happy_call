@@ -1,5 +1,6 @@
 // src/pages/AgentAssignmentDashboard.jsx
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Card,
     Table,
@@ -17,20 +18,18 @@ import {
     Progress,
     message,
     Spin,
-    Tooltip,
 } from 'antd';
 import {
     UserOutlined,
-    CheckCircleOutlined,
-    ClockCircleOutlined,
     ExclamationCircleOutlined,
-    PhoneOutlined,
     TeamOutlined,
     FileTextOutlined,
     SearchOutlined,
     ReloadOutlined,
+    UserAddOutlined,
 } from '@ant-design/icons';
 import { assignmentApi } from '../api/assignmentApi';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../config/currency';
 
 const { Title, Text } = Typography;
@@ -38,6 +37,9 @@ const { Option } = Select;
 const { TabPane } = Tabs;
 
 const AgentAssignmentDashboard = () => {
+    const navigate = useNavigate();
+    const { isAdmin } = useAuth();
+
     const [loading, setLoading] = useState(false);
     const [agentWorkload, setAgentWorkload] = useState([]);
     const [allTasks, setAllTasks] = useState([]);
@@ -49,7 +51,6 @@ const AgentAssignmentDashboard = () => {
     const [searchText, setSearchText] = useState('');
     const [viewMode, setViewMode] = useState('overview');
 
-    // ✅ Fetch all data
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -81,7 +82,6 @@ const AgentAssignmentDashboard = () => {
         fetchData();
     }, [selectedAgent, statusFilter, typeFilter]);
 
-    // ✅ Agent Workload Columns
     const workloadColumns = [
         {
             title: 'Agent',
@@ -107,11 +107,7 @@ const AgentAssignmentDashboard = () => {
                 </Tag>
             ),
         },
-        {
-            title: 'Extension',
-            dataIndex: 'extension',
-            key: 'extension',
-        },
+        { title: 'Extension', dataIndex: 'extension', key: 'extension' },
         {
             title: 'Active Tasks',
             dataIndex: 'activeTasks',
@@ -152,8 +148,8 @@ const AgentAssignmentDashboard = () => {
             title: 'Action',
             key: 'action',
             render: (_, record) => (
-                <Button 
-                    type="link" 
+                <Button
+                    type="link"
                     onClick={() => {
                         setSelectedAgent(record.agentId);
                         setViewMode('tasks');
@@ -165,7 +161,6 @@ const AgentAssignmentDashboard = () => {
         },
     ];
 
-    // ✅ All Tasks Columns
     const taskColumns = [
         {
             title: 'Loan ID',
@@ -173,16 +168,8 @@ const AgentAssignmentDashboard = () => {
             key: 'loanId',
             render: (text) => <a>{text}</a>,
         },
-        {
-            title: 'Customer',
-            dataIndex: 'customerName',
-            key: 'customerName',
-        },
-        {
-            title: 'Phone',
-            dataIndex: 'phone',
-            key: 'phone',
-        },
+        { title: 'Customer', dataIndex: 'customerName', key: 'customerName' },
+        { title: 'Phone', dataIndex: 'phone', key: 'phone' },
         {
             title: 'Type',
             dataIndex: 'type',
@@ -222,7 +209,7 @@ const AgentAssignmentDashboard = () => {
             title: 'Assigned To',
             dataIndex: 'agentName',
             key: 'agentName',
-            render: (text, record) => (
+            render: (text) =>
                 text ? (
                     <Space>
                         <UserOutlined />
@@ -230,8 +217,7 @@ const AgentAssignmentDashboard = () => {
                     </Space>
                 ) : (
                     <Tag color="default">Unassigned</Tag>
-                )
-            ),
+                ),
         },
         {
             title: 'Calls',
@@ -243,22 +229,13 @@ const AgentAssignmentDashboard = () => {
             title: 'Last Call',
             dataIndex: 'lastCallAt',
             key: 'lastCallAt',
-            render: (date) => date ? new Date(date).toLocaleString() : '-',
+            render: (date) => (date ? new Date(date).toLocaleString() : '-'),
         },
-        {
-            title: 'Attempts',
-            dataIndex: 'attempts',
-            key: 'attempts',
-        },
+        { title: 'Attempts', dataIndex: 'attempts', key: 'attempts' },
     ];
 
-    // ✅ Performance Columns
     const performanceColumns = [
-        {
-            title: 'Agent',
-            dataIndex: 'agentName',
-            key: 'agentName',
-        },
+        { title: 'Agent', dataIndex: 'agentName', key: 'agentName' },
         {
             title: 'Type',
             dataIndex: 'agentType',
@@ -269,18 +246,14 @@ const AgentAssignmentDashboard = () => {
                 </Tag>
             ),
         },
-        {
-            title: 'Total Assigned',
-            dataIndex: 'totalAssigned',
-            key: 'totalAssigned',
-        },
+        { title: 'Total Assigned', dataIndex: 'totalAssigned', key: 'totalAssigned' },
         {
             title: 'Success Rate',
             dataIndex: 'successRate',
             key: 'successRate',
             render: (rate) => (
-                <Progress 
-                    percent={Math.round(rate || 0)} 
+                <Progress
+                    percent={Math.round(rate || 0)}
                     size="small"
                     strokeColor={rate >= 80 ? '#52c41a' : rate >= 60 ? '#faad14' : '#ff4d4f'}
                 />
@@ -319,7 +292,14 @@ const AgentAssignmentDashboard = () => {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    height: '100%',
+                }}
+            >
                 <Spin size="large" tip="Loading assignment data..." />
             </div>
         );
@@ -327,11 +307,31 @@ const AgentAssignmentDashboard = () => {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <Title level={2} style={{ margin: 0 }}>Agent Assignment Dashboard</Title>
-                <Button icon={<ReloadOutlined />} onClick={fetchData}>
-                    Refresh
-                </Button>
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 16,
+                }}
+            >
+                <Title level={2} style={{ margin: 0 }}>
+                    Agent Assignment Dashboard
+                </Title>
+                <Space>
+                    <Button icon={<ReloadOutlined />} onClick={fetchData}>
+                        Refresh
+                    </Button>
+                    {isAdmin && (
+                        <Button
+                            type="primary"
+                            icon={<UserAddOutlined />}
+                            onClick={() => navigate('/admin/task-assignment')}
+                        >
+                            Assign Tasks
+                        </Button>
+                    )}
+                </Space>
             </div>
 
             <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
@@ -392,7 +392,7 @@ const AgentAssignmentDashboard = () => {
                         placeholder="Filter by Agent"
                     >
                         <Option value="all">All Agents</Option>
-                        {agentWorkload.map(agent => (
+                        {agentWorkload.map((agent) => (
                             <Option key={agent.agentId} value={agent.agentId}>
                                 {agent.agentName}
                             </Option>
@@ -430,7 +430,9 @@ const AgentAssignmentDashboard = () => {
                         onPressEnter={() => fetchData()}
                         allowClear
                     />
-                    <Button type="primary" onClick={fetchData}>Apply Filters</Button>
+                    <Button type="primary" onClick={fetchData}>
+                        Apply Filters
+                    </Button>
                 </Space>
             </Card>
 

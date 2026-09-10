@@ -64,7 +64,7 @@ const CampaignAssignment = () => {
           ...(isSupervisor ? { supervisorId: user?.id } : {}),
         }),
         campaignApi.getCampaigns({
-          status: ['ACTIVE', 'DRAFT'],
+          status: 'ACTIVE,DRAFT',
           ...(isSupervisor ? { supervisorId: user?.id } : {}),
         }),
       ]);
@@ -103,7 +103,7 @@ const CampaignAssignment = () => {
     }
 
     // Get the campaign ID from the first selected loan
-    const campaignId = selectedCampaign[selectedLoans[0].loanId];
+    const campaignId = selectedCampaign[selectedLoans[0].loan_id];
     if (!campaignId) {
       message.warning('Please select a campaign for the selected loans');
       return;
@@ -111,7 +111,7 @@ const CampaignAssignment = () => {
 
     try {
       await loanApi.bulkAssignToCampaign(
-        selectedLoans.map((l) => l.loanId),
+        selectedLoans.map((l) => l.loan_id),
         campaignId
       );
       message.success(`${selectedLoans.length} loans assigned to campaign`);
@@ -139,10 +139,9 @@ const CampaignAssignment = () => {
     },
     {
       title: 'Amount',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount) => `${amount.toLocaleString()} MMK`,
-      sorter: (a, b) => a.amount - b.amount,
+      dataIndex: 'loan_amount',
+      render: (amount) => `${(amount || 0).toLocaleString()} MMK`,
+      sorter: (a, b) => (a.loan_amount || 0) - (b.loan_amount || 0),
     },
     {
       title: 'Branch',
@@ -156,9 +155,8 @@ const CampaignAssignment = () => {
       render: (date) => (date ? new Date(date).toLocaleDateString() : '-'),
     },
     {
-      title: 'Task Type',
-      dataIndex: 'task_type',
-      key: 'task_type',
+      title: 'Loan Type',
+      dataIndex: 'loan_type',
       render: (type) => <Tag color={type === 'DISBURSEMENT' ? 'blue' : 'orange'}>{type}</Tag>,
     },
 
@@ -215,16 +213,22 @@ const CampaignAssignment = () => {
     }
 
     if (filterType !== 'all') {
-      filtered = filtered.filter((l) => l.task_type === filterType);
+      filtered = filtered.filter((l) => l.loan_type === filterType);
     }
 
     if (searchText) {
       const search = searchText.toLowerCase();
       filtered = filtered.filter(
         (l) =>
-          l.loan_id.toLowerCase().includes(search) ||
-          l.customer_name.toLowerCase().includes(search) ||
-          l.branch_id?.toLowerCase().includes(search)
+          String(l.loan_id || '')
+            .toLowerCase()
+            .includes(search) ||
+          String(l.customer_name || '')
+            .toLowerCase()
+            .includes(search) ||
+          String(l.branch_id || '')
+            .toLowerCase()
+            .includes(search)
       );
     }
 

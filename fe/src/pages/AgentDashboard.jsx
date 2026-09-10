@@ -35,8 +35,8 @@ const AgentDashboard = () => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = () => {
-  setRefreshKey(prev => prev + 1);
-};
+    setRefreshKey((prev) => prev + 1);
+  };
   // ✅ Fetch agent stats
   const fetchAgentStats = async () => {
     if (!user?.id) return;
@@ -52,7 +52,11 @@ const AgentDashboard = () => {
       const today = new Date().toISOString().slice(0, 10);
       const todayAttempts = attempts.filter((a) => a.createdAt && a.createdAt.startsWith(today));
       setStats({
-        ...data,
+        todayQueue: data.todayQueue ?? 0,
+        completed: data.completed ?? 0,
+        pending: data.pending ?? 0,
+        exceptions: data.exceptions ?? 0,
+        completionRate: data.completionRate ?? '0.0',
         todayCalls: todayAttempts.length,
         confirmedCallsToday: todayAttempts.filter((a) => a.result === 'CONFIRMED').length,
         disputedCallsToday: todayAttempts.filter((a) => a.result === 'DISPUTED').length,

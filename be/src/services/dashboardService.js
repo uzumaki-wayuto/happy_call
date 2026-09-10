@@ -209,20 +209,24 @@ export const dashboardService = {
             const pool = await getConnection();
             const result = await pool.request().input('agentId', agentId).query(`
                     SELECT 
-                        COUNT(*) as todayQueue,
-                        SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completed,
-                        SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END) as pending,
-                        SUM(CASE WHEN status IN ('DISPUTED', 'ESCALATED') THEN 1 ELSE 0 END) as exceptions
-                    FROM VERIFICATION_TASKS
-                    WHERE assigned_agent_id = @agentId
-                    AND status NOT IN ('CLOSED')
+                ISNULL(COUNT(*), 0) as todayQueue,
+                ISNULL(SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END), 0) as completed,
+                ISNULL(SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END), 0) as pending,
+                ISNULL(SUM(CASE WHEN status IN ('DISPUTED', 'ESCALATED') THEN 1 ELSE 0 END), 0) as exceptions
+            FROM VERIFICATION_TASKS
+            WHERE assigned_agent_id = @agentId
+            AND status NOT IN ('CLOSED')
                 `);
 
             const stats = result.recordset[0] || {};
             return {
-                ...stats,
+                todayQueue: stats.todayQueue || 0,
+                completed: stats.completed || 0,
+                pending: stats.pending || 0,
+                exceptions: stats.exceptions || 0,
                 completionRate: stats.todayQueue > 0 ?
-                    ((stats.completed / stats.todayQueue) * 100).toFixed(1) : 0,
+                    ((stats.completed / stats.todayQueue) * 100).toFixed(1) :
+                    '0.0',
             };
         } catch (error) {
             console.error('Error in getAgentStats:', error);

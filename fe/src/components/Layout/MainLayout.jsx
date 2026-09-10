@@ -1,7 +1,13 @@
 // fe/src/components/Layout/MainLayout.jsx
 import { useState, useEffect, useRef } from 'react';
 import { Layout, Menu, Space, Tag, Button, Avatar, Badge } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, LogoutOutlined, UserOutlined, SmileOutlined } from '@ant-design/icons';
+import {
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  LogoutOutlined,
+  UserOutlined,
+  SmileOutlined,
+} from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MENU_ITEMS } from '../../config/menuConfig';
@@ -16,13 +22,12 @@ const MainLayout = ({ children }) => {
   const { user, logout, role } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [pbxStatus, setPbxStatus] = useState({ 
-    connected: false, 
+  const [pbxStatus, setPbxStatus] = useState({
+    connected: false,
     activeCalls: 0,
-    isReady: false 
+    isReady: false,
   });
-  
-  // ✅ Use ref to track if handlers are registered
+
   const handlersRegistered = useRef(false);
   const statusReceivedRef = useRef(false);
 
@@ -33,15 +38,12 @@ const MainLayout = ({ children }) => {
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
-  // ============ PBX STATUS - FIXED WITH REFS ============
+  // ============ PBX STATUS ============
   useEffect(() => {
-    // Connect socket only once
     socketService.connect();
 
-    // ✅ Define handlers with useRef to prevent duplicates
     const handleConnect = () => {
       console.log('✅ Socket connected, getting PBX status...');
-      // Get PBX status once after connection
       setTimeout(() => {
         socketService.getPBXStatus();
       }, 500);
@@ -49,37 +51,31 @@ const MainLayout = ({ children }) => {
 
     const handlePBXStatus = (data) => {
       console.log('📡 PBX Status received:', data);
-      // ✅ Only update if status actually changed
       setPbxStatus((prev) => {
-        if (prev.connected === data.connected && 
-            prev.activeCalls === data.activeCalls && 
-            prev.isReady === true) {
-          return prev; // No change, prevent re-render
+        if (
+          prev.connected === data.connected &&
+          prev.activeCalls === data.activeCalls &&
+          prev.isReady === true
+        ) {
+          return prev;
         }
-        return { 
-          ...data, 
-          isReady: true 
-        };
+        return { ...data, isReady: true };
       });
     };
 
-    // ✅ Register handlers only once
     if (!handlersRegistered.current) {
       console.log('📌 Registering socket handlers...');
-      
-      // Check if already connected
+
       if (socketService.isConnected()) {
         handleConnect();
       }
 
-      // Register listeners
       socketService.on('connect', handleConnect);
       socketService.on('pbx:status', handlePBXStatus);
-      
+
       handlersRegistered.current = true;
     }
 
-    // ✅ Cleanup on unmount
     return () => {
       if (handlersRegistered.current) {
         console.log('🧹 Cleaning up socket handlers...');
@@ -89,19 +85,22 @@ const MainLayout = ({ children }) => {
         statusReceivedRef.current = false;
       }
     };
-  }, []); // ✅ Empty dependency array - runs once
+  }, []);
 
-  // If loading, show skeleton
-  if (isLoading) {
-    return <DashboardSkeleton />;
-  }
-
-  // Get the correct menu items for this role
+  // ✅ Menu items (must be computed BEFORE any early return that uses them)
   const menuItems = MENU_ITEMS[role] || [];
 
-  // Determine selected key from current path
-  const currentPath = location.pathname.replace(/^\/(admin|supervisor|agent)\//, '');
-  const selectedKey = currentPath || 'dashboard';
+  // ✅ Find path in nested menu by key
+  const findPath = (items, key) => {
+    for (const item of items) {
+      if (item.key === key && item.path) return item.path;
+      if (item.children) {
+        const found = findPath(item.children, key);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
 
   const handleMenuClick = (e) => {
     if (e.key === 'logout') {
@@ -109,24 +108,43 @@ const MainLayout = ({ children }) => {
       navigate('/login');
       return;
     }
-    const prefix = role === 'ADMIN' ? '/admin' : '';
-    navigate(`${prefix}/${e.key}`);
+
+    const path = findPath(menuItems, e.key);
+    if (path) {
+      navigate(path);
+    } else {
+      // Fallback for items without a defined path
+      const prefix = role === 'ADMIN' ? '/admin' : '';
+      navigate(`${prefix}/${e.key}`);
+    }
   };
+
+  // If loading, show skeleton (AFTER hooks are declared)
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  // Determine selected key from current path
+  const currentPath = location.pathname.replace(/^\/(admin|supervisor|agent)\//, '');
+  const selectedKey = currentPath || 'dashboard';
 
   // Role-based styling
   const roleColor = role === 'ADMIN' ? 'red' : role === 'SUPERVISOR' ? 'orange' : 'blue';
   const roleLabel = role === 'ADMIN' ? 'Admin' : role === 'SUPERVISOR' ? 'Supervisor' : 'Agent';
 
-  // Get page title from path
   const getPageTitle = () => {
     const path = location.pathname.split('/').pop() || 'Dashboard';
     return path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ');
   };
 
-  // Get user initials for avatar
   const getUserInitials = () => {
     const name = user?.fullName || 'User';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const SIDEBAR_WIDTH = 240;
@@ -134,7 +152,6 @@ const MainLayout = ({ children }) => {
 
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden', position: 'relative' }}>
-      {/* Fixed Sidebar */}
       <Sider
         trigger={null}
         collapsible
@@ -149,67 +166,78 @@ const MainLayout = ({ children }) => {
           top: 0,
           bottom: 0,
           zIndex: 1000,
-          overflow: 'hidden', 
+          overflow: 'hidden',
           flexShrink: 0,
           boxShadow: collapsed ? 'none' : '2px 0 12px rgba(0,0,0,0.15)',
           transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        {/* Sidebar Logo */}
-        <div style={{ 
-          padding: '16px 12px', 
-          color: 'white', 
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          overflow: 'hidden',
-          transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}>
-          <div style={{
+        <div
+          style={{
+            padding: '16px 12px',
+            color: 'white',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            gap: 10,
-            width: '100%',
-            paddingLeft: collapsed ? 0 : 4,
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            overflow: 'hidden',
             transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}>
-            <SmileOutlined style={{ 
-              fontSize: collapsed ? 28 : 22, 
-              color: '#fff',
-              flexShrink: 0,
-              transition: 'font-size 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-            }} />
-            
-            <div style={{
+          }}
+        >
+          <div
+            style={{
               display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              opacity: collapsed ? 0 : 1,
-              maxWidth: collapsed ? 0 : '180px',
-              transition: 'opacity 0.5s ease-in-out, max-width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-            }}>
-              <span style={{
+              alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              gap: 10,
+              width: '100%',
+              paddingLeft: collapsed ? 0 : 4,
+              transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+          >
+            <SmileOutlined
+              style={{
+                fontSize: collapsed ? 28 : 22,
                 color: '#fff',
-                fontSize: 20,
-                fontWeight: 600,
-                lineHeight: 1.2,
-                transition: 'font-size 0.5s ease',
-              }}>
+                flexShrink: 0,
+                transition: 'font-size 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                opacity: collapsed ? 0 : 1,
+                maxWidth: collapsed ? 0 : '180px',
+                transition: 'opacity 0.5s ease-in-out, max-width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  color: '#fff',
+                  fontSize: 20,
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                  transition: 'font-size 0.5s ease',
+                }}
+              >
                 Happy Call
               </span>
-              <span style={{
-                color: '#ffc32d',
-                fontSize: 10,
-                fontWeight: 500,
-                letterSpacing: '0.5px',
-                textTransform: 'uppercase',
-                lineHeight: 1.2,
-                marginTop: 1,
-              }}>
+              <span
+                style={{
+                  color: '#ffc32d',
+                  fontSize: 10,
+                  fontWeight: 500,
+                  letterSpacing: '0.5px',
+                  textTransform: 'uppercase',
+                  lineHeight: 1.2,
+                  marginTop: 1,
+                }}
+              >
                 NongHyup
               </span>
             </div>
@@ -229,7 +257,6 @@ const MainLayout = ({ children }) => {
         />
       </Sider>
 
-      {/* Main Content Area */}
       <Layout
         style={{
           marginLeft: collapsed ? 80 : 240,
@@ -241,7 +268,6 @@ const MainLayout = ({ children }) => {
           overflow: 'hidden',
         }}
       >
-        {/* Header */}
         <Header
           style={{
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -255,15 +281,14 @@ const MainLayout = ({ children }) => {
             width: '100%',
           }}
         >
-          {/* Left side - Hamburger + Page Title */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
-              style={{ 
-                fontSize: '18px', 
-                width: 48, 
+              style={{
+                fontSize: '18px',
+                width: 48,
                 height: 48,
                 color: '#fff',
                 background: 'rgba(255,255,255,0.1)',
@@ -277,37 +302,33 @@ const MainLayout = ({ children }) => {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
               }}
             />
-            <div style={{ 
-              fontSize: 20, 
-              fontWeight: 600, 
-              color: '#fff',
-              letterSpacing: '0.5px',
-            }}>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 600,
+                color: '#fff',
+                letterSpacing: '0.5px',
+              }}
+            >
               {getPageTitle()}
             </div>
           </div>
 
-          {/* Right side - User info with PBX Status */}
           <Space size="middle">
-            {/* ✅ PBX Status Indicator - Only show when ready */}
             {pbxStatus.isReady && (
-              <Badge 
-                status={pbxStatus.connected ? 'success' : 'error'} 
+              <Badge
+                status={pbxStatus.connected ? 'success' : 'error'}
                 text={
-                  <span style={{ 
-                    color: '#fff', 
-                    fontSize: 12,
-                    opacity: 0.9,
-                  }}>
+                  <span style={{ color: '#fff', fontSize: 12, opacity: 0.9 }}>
                     PBX {pbxStatus.connected ? 'Online' : 'Offline'}
                     {pbxStatus.activeCalls > 0 && ` (${pbxStatus.activeCalls} calls)`}
                   </span>
                 }
               />
             )}
-            
-            <Avatar 
-              style={{ 
+
+            <Avatar
+              style={{
                 backgroundColor: roleColor,
                 color: '#fff',
                 cursor: 'pointer',
@@ -324,7 +345,10 @@ const MainLayout = ({ children }) => {
             <Button
               type="text"
               icon={<LogoutOutlined />}
-              onClick={() => { logout(); navigate('/login'); }}
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
               style={{ color: '#fff', fontWeight: 500 }}
             >
               Logout
@@ -332,7 +356,6 @@ const MainLayout = ({ children }) => {
           </Space>
         </Header>
 
-        {/* Scrollable Content Area */}
         <Content
           style={{
             padding: 24,

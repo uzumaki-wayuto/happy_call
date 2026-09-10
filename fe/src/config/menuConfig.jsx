@@ -43,83 +43,47 @@ export const MENU_ITEMS = {
     { key: 'settings', label: 'Settings', icon: <SettingOutlined /> },
   ],
 
-  // 🟡 SUPERVISOR – 8 items (monitoring, exceptions, reports)
+  // 🟡 SUPERVISOR
   SUPERVISOR: [
     { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined /> },
-    { key: 'assignment', label: 'Agent Assignment', icon: <SolutionOutlined /> },
-    { key: 'agents', label: 'Agent Performance', icon: <UserOutlined /> },
-    { key: 'campaigns', label: 'Campaigns', icon: <FlagOutlined />,
-      children: [
-        {
-          key: 'campaign-list',
-          label: 'Campaign List',
-          path: '/supervisor/campaigns',
-        },
-        {
-          key: 'campaign-upload',
-          label: 'Loan Data Upload',
-          path: '/supervisor/upload',
-        },
-        {
-          key: 'campaign-assignment', // NEW
-          icon: <TagsOutlined />,
-          label: 'Campaign Assignment',
-          path: '/supervisor/campaign-assignment',
-        },
-      ],
-    },
-    { key: 'exceptions', label: 'Exceptions', icon: <ExceptionOutlined />,
-      path: '/supervisor/exceptions',
-    },
-    { key: 'callbacks', label: 'Callback Mgmt', icon: <CalendarOutlined /> },
-    { key: 'reports', label: 'Reports', icon: <BarChartOutlined />,
-      path: '/supervisor/reports',
-    },
-    { key: 'settings', label: 'Settings', icon: <SettingOutlined /> },
     {
       key: 'tasks',
       icon: <FileTextOutlined />,
       label: 'Tasks',
       children: [
-        {
-          key: 'task-list',
-          label: 'Task List',
-          path: '/supervisor/tasks',
-        },
-        {
-          key: 'task-assignment',
-          label: 'Task Assignment',
-          path: '/supervisor/task-assignment',
-        },
+        { key: 'task-list', label: 'Task List', path: '/supervisor/tasks' },
+        { key: 'task-assignment', label: 'Task Assignment', path: '/supervisor/task-assignment' },
       ],
     },
-     {
-      key: 'pbx',
-      icon: <PhoneOutlined />,
-      label: 'PBX Management',
-      path: '/supervisor/pbx',
+    { key: 'agents', label: 'Agent Performance', icon: <UserOutlined />, path: '/agents' },
+    {
+      key: 'campaigns',
+      label: 'Campaigns',
+      icon: <FlagOutlined />,
+      children: [
+        { key: 'campaign-list', label: 'Campaign List', path: '/supervisor/campaigns' },
+        { key: 'campaign-upload', label: 'Loan Data Upload', path: '/supervisor/upload' },
+        { key: 'campaign-assignment', icon: <TagsOutlined />, label: 'Campaign Assignment', path: '/supervisor/campaign-assignment' },
+      ],
     },
+    { key: 'exceptions', label: 'Exceptions', icon: <ExceptionOutlined />, path: '/supervisor/exceptions' },
+    { key: 'callbacks', label: 'Callback Mgmt', icon: <CalendarOutlined />, path: '/callbacks' },
+    { key: 'reports', label: 'Reports', icon: <BarChartOutlined />, path: '/reports' },
+    { key: 'settings', label: 'Settings', icon: <SettingOutlined />, path: '/settings' },
   ],
 
-  // 🔴 ADMIN – 7 items (core admin features only)
+   // 🔴 ADMIN
   ADMIN: [
-    { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/admin/dashboard', },
+    { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, path: '/admin/dashboard' },
     { key: 'upload', label: 'Loan Data Upload', icon: <UploadOutlined />, path: '/admin/upload' },
-    { key: 'assignment', label: 'Agent Assignment', icon: <SolutionOutlined /> },
-    { key: 'users', label: 'User Management', icon: <UserOutlined />,  path: '/admin/users', },
-    { key: 'campaigns', label: 'Campaigns', icon: <FolderOutlined />, children: [
-        {
-          key: 'campaign-list',
-          label: 'Campaign List',
-          path: '/admin/campaigns',
-          icon: <UploadOutlined />,
-        },
-        {
-          key: 'campaign-assignment', // NEW
-          icon: <TagsOutlined />,
-          label: 'Campaign Assignment',
-          path: '/admin/campaign-assignment',
-        },
+    { key: 'users', label: 'User Management', icon: <UserOutlined />, path: '/admin/users' },
+    {
+      key: 'campaigns',
+      label: 'Campaigns',
+      icon: <FolderOutlined />,
+      children: [
+        { key: 'campaign-list', label: 'Campaign List', path: '/admin/campaigns' },
+        { key: 'campaign-assignment', icon: <TagsOutlined />, label: 'Campaign Assignment', path: '/admin/campaign-assignment' },
       ],
     },
     {
@@ -127,32 +91,14 @@ export const MENU_ITEMS = {
       icon: <FileTextOutlined />,
       label: 'Tasks',
       children: [
-        {
-          key: 'task-list',
-          label: 'Task List',
-          path: '/admin/tasks',
-        },
-        {
-          key: 'task-assignment',
-          label: 'Task Assignment',
-          path: '/admin/task-assignment',
-        },
+        { key: 'task-list', label: 'Task List', path: '/admin/tasks' },
+        { key: 'task-assignment', label: 'Task Assignment', path: '/admin/task-assignment' },
       ],
     },
-    { key: 'reports', label: 'Reports', icon: <BarChartOutlined />,  path: '/admin/reports', },
-    { key: 'settings', label: 'System Settings', icon: <SettingOutlined />, path: '/admin/settings', },
-    {
-      key: 'exceptions',
-      icon: <ExceptionOutlined />,
-      label: 'Exceptions',
-      path: '/admin/exceptions',
-    },
-    {
-      key: 'pbx',
-      icon: <PhoneOutlined />,
-      label: 'PBX Management',
-      path: '/admin/pbx',
-    },
+    { key: 'exceptions', label: 'Exceptions', icon: <ExceptionOutlined />, path: '/admin/exceptions' },
+    { key: 'reports', label: 'Reports', icon: <BarChartOutlined />, path: '/admin/reports' },
+    { key: 'pbx', label: 'PBX Management', icon: <PhoneOutlined />, path: '/admin/pbx' },
+    { key: 'settings', label: 'System Settings', icon: <SettingOutlined />, path: '/admin/settings' },
   ],
 };
 

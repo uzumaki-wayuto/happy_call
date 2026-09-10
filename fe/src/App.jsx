@@ -8,24 +8,7 @@ import MainLayout from './components/Layout/MainLayout';
 import Login from './pages/Login';
 import AdminLogin from './pages/AdminLogin';
 
-
-// Lazy load pages with loading indicator
-const LoadingFallback = () => (
-  <div
-    style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      height: '100vh',
-    }}
-  >
-    <Spin size="large" tip="Loading..." />
-  </div>
-);
-
-const LazyRoute = ({ children }) => <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
-
-// Lazy load all pages
+// Lazy load pages
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const SupervisorDashboard = lazy(() => import('./pages/SupervisorDashboard'));
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'));
@@ -34,6 +17,7 @@ const CallHistory = lazy(() => import('./pages/CallHistory'));
 const MyResults = lazy(() => import('./pages/MyResults'));
 const Callbacks = lazy(() => import('./pages/Callbacks'));
 const Campaigns = lazy(() => import('./pages/Campaigns'));
+const CampaignAssignment = lazy(() => import('./pages/CampaignAssignment'));
 const AgentPerformance = lazy(() => import('./pages/AgentPerformance'));
 const Exceptions = lazy(() => import('./pages/Exceptions'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -43,9 +27,13 @@ const UserManagement = lazy(() => import('./pages/UserManagement'));
 const AgentAssignment = lazy(() => import('./pages/AgentAssignment'));
 const AgentAssignmentDashboard = lazy(() => import('./pages/AgentAssignmentDashboard'));
 const PbxManagement = lazy(() => import('./pages/PbxManagement'));
-const CampaignAssignment = lazy(() => import('./pages/CampaignAssignment'));
 
-// Wrapper to show correct dashboard based on role
+const LoadingFallback = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+    <Spin size="large" tip="Loading..." />
+  </div>
+);
+
 const DashboardWrapper = () => {
   const { role } = useAuth();
   if (role === ROLES.ADMIN) return <AdminDashboard />;
@@ -57,290 +45,159 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          {/* ===== PUBLIC ROUTES ===== */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin/" element={<AdminLogin />} />
-          <Route path="/admin/login" element={<AdminLogin />} /> {/* ✅ Admin login route */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-          {/* ===== ADMIN PORTAL (/admin/*) ===== */}
-          <Route
-            path="/admin/dashboard"
-            element={
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            {/* ===== PUBLIC ===== */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/admin/" element={<AdminLogin />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
+
+            {/* ===== ADMIN PORTAL ===== */}
+            <Route path="/admin/dashboard" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <AdminDashboard />
-                </MainLayout>
+                <MainLayout><AdminDashboard /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
+            } />
+            <Route path="/admin/users" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <UserManagement />
-                </MainLayout>
+                <MainLayout><UserManagement /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/upload"
-            element={
+            } />
+            <Route path="/admin/upload" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <TargetListUpload />
-                </MainLayout>
+                <MainLayout><TargetListUpload /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/assignment"
-            element={
-              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <AgentAssignmentDashboard />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/campaigns"
-            element={
+            } />
+            <Route path="/admin/campaigns" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <Campaigns />
-                </MainLayout>
+                <MainLayout><Campaigns /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/campaign-assignment"
-            element={
+            } />
+            <Route path="/admin/campaign-assignment" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <CampaignAssignment />
-                </MainLayout>
+                <MainLayout><CampaignAssignment /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          {/* ===== ADMIN: TASKS + ASSIGNMENT ===== */}
-          <Route
-            path="/admin/tasks"
-            element={
+            } />
+            <Route path="/admin/tasks" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <AgentAssignmentDashboard />
-                </MainLayout>
+                <MainLayout><AgentAssignmentDashboard /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/task-assignment"
-            element={
+            } />
+            <Route path="/admin/task-assignment" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <AgentAssignment />
-                </MainLayout>
+                <MainLayout><AgentAssignment /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/reports"
-            element={
+            } />
+            <Route path="/admin/assignment" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <Reports />
-                </MainLayout>
+                <Navigate to="/admin/task-assignment" replace />
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/exceptions"
-            element={
+            } />
+            <Route path="/admin/reports" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <Exceptions />
-                </MainLayout>
+                <MainLayout><Reports /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/settings"
-            element={
+            } />
+            <Route path="/admin/exceptions" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <SystemSettings />
-                </MainLayout>
+                <MainLayout><Exceptions /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          {/* ===== ADMIN: PBX (admin only) ===== */}
-          <Route
-            path="/admin/pbx"
-            element={
+            } />
+            <Route path="/admin/settings" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
-                <MainLayout>
-                  <PbxManagement />
-                </MainLayout>
+                <MainLayout><SystemSettings /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/*"
-            element={
+            } />
+            <Route path="/admin/pbx" element={
+              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                <MainLayout><PbxManagement /></MainLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/*" element={
               <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
                 <Navigate to="/admin/dashboard" replace />
               </ProtectedRoute>
-            }
-          />
-          {/* ===== SUPERVISOR + AGENT PORTAL (root) ===== */}
-          <Route
-            path="/dashboard"
-            element={
+            } />
+
+            {/* ===== SHARED (SUPERVISOR + AGENT) ===== */}
+            <Route path="/dashboard" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
-                <MainLayout>
-                  <DashboardWrapper />
-                </MainLayout>
+                <MainLayout><DashboardWrapper /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/queue"
-            element={
+            } />
+            <Route path="/queue" element={
               <ProtectedRoute allowedRoles={[ROLES.AGENT]}>
-                <MainLayout>
-                  <QueueList />
-                </MainLayout>
+                <MainLayout><QueueList /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/history"
-            element={
+            } />
+            <Route path="/history" element={
               <ProtectedRoute allowedRoles={[ROLES.AGENT]}>
-                <MainLayout>
-                  <CallHistory />
-                </MainLayout>
+                <MainLayout><CallHistory /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-results"
-            element={
+            } />
+            <Route path="/my-results" element={
               <ProtectedRoute allowedRoles={[ROLES.AGENT]}>
-                <MainLayout>
-                  <MyResults />
-                </MainLayout>
+                <MainLayout><MyResults /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/callbacks"
-            element={
+            } />
+            <Route path="/callbacks" element={
               <ProtectedRoute allowedRoles={[ROLES.AGENT, ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <Callbacks />
-                </MainLayout>
+                <MainLayout><Callbacks /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/campaigns"
-            element={
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
+                <MainLayout><Reports /></MainLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
+                <MainLayout><SystemSettings /></MainLayout>
+              </ProtectedRoute>
+            } />
+
+            {/* ===== SUPERVISOR PORTAL ===== */}
+            <Route path="/supervisor/tasks" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <Campaigns />
-                </MainLayout>
+                <MainLayout><AgentAssignmentDashboard /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supervisor/campaign-assignment"
-            element={
-              <ProtectedRoute roles={['ROLES.SUPERVISOR']}>
-                <CampaignAssignment />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supervisor/tasks"
-            element={
+            } />
+            <Route path="/supervisor/task-assignment" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <AgentAssignmentDashboard />
-                </MainLayout>
+                <MainLayout><AgentAssignment /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supervisor/task-assignment"
-            element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <AgentAssignment />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supervisor/assignment"
-            element={
+            } />
+            <Route path="/supervisor/assignment" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
                 <Navigate to="/supervisor/task-assignment" replace />
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/agents"
-            element={
+            } />
+            <Route path="/supervisor/exceptions" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <AgentPerformance />
-                </MainLayout>
+                <MainLayout><Exceptions /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/exceptions"
-            element={
+            } />
+            <Route path="/supervisor/campaigns" element={
               <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
-                <MainLayout>
-                  <Exceptions />
-                </MainLayout>
+                <MainLayout><Campaigns /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reports"
-            element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
-                <MainLayout>
-                  <Reports />
-                </MainLayout>
+            } />
+            <Route path="/supervisor/campaign-assignment" element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
+                <MainLayout><CampaignAssignment /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
-                <MainLayout>
-                  <SystemSettings />
-                </MainLayout>
+            } />
+            <Route path="/agents" element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR]}>
+                <MainLayout><AgentPerformance /></MainLayout>
               </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute allowedRoles={[ROLES.SUPERVISOR, ROLES.AGENT]}>
-                <Navigate to="/dashboard" replace />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+            } />
+
+            {/* ===== CATCH-ALL ===== */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   );

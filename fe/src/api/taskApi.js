@@ -2,6 +2,7 @@
 import api from './client';
 
 export const taskApi = {
+    // ============ BASIC TASKS ============
     getTasks: (params) => api.get('/tasks', { params }),
     getTask: (id) => api.get(`/tasks/${id}`),
     createTask: (data) => api.post('/tasks', data),
@@ -12,13 +13,20 @@ export const taskApi = {
     getMyAttempts: (agentId, limit) =>
         api.get(`/attempts/agent/${agentId}`, { params: { limit } }),
     getMyTasks: (params) => {
-        // ✅ Ensure agentId is always included
         const safeParams = {...params };
         if (!safeParams.agentId) {
             console.warn('⚠️ getMyTasks called without agentId');
         }
-        return api.get(`/tasks`, { params: safeParams });
+        return api.get('/tasks', { params: safeParams });
     },
+
+    // ============ ASSIGNMENT ============
+    getUnassignedTasks: (params) => api.get('/tasks/unassigned', { params }),
+    assignTasksToAgents: (data) => api.post('/tasks/assign', data),
+    autoAssignPendingTasks: (taskType) =>
+        api.post('/tasks/auto-assign', taskType ? { taskType } : {}),
+    getAssignmentSuggestions: (taskId) =>
+        api.post('/tasks/suggestions', { taskId }),
 };
 
 export default taskApi;

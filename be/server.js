@@ -309,6 +309,21 @@ app.get('/api/tasks', async(req, res) => {
     }
 });
 
+
+app.get('/api/tasks/unassigned', async(req, res) => {
+    try {
+        const { taskType, campaignAssigned } = req.query;
+        const tasks = await taskService.getUnassignedTasks(
+            taskType,
+            campaignAssigned !== undefined ? parseInt(campaignAssigned) : undefined
+        );
+        res.json(tasks);
+    } catch (error) {
+        console.error('Error fetching unassigned tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch unassigned tasks' });
+    }
+});
+
 app.get('/api/tasks/:id', async(req, res) => {
     try {
         const task = await taskService.getTaskById(req.params.id);
@@ -629,16 +644,6 @@ app.post('/api/tasks/assign', async(req, res) => {
     }
 });
 
-app.get('/api/tasks/unassigned', async(req, res) => {
-    try {
-        const { taskType } = req.query;
-        const tasks = await taskService.getUnassignedTasks(taskType);
-        res.json(tasks);
-    } catch (error) {
-        console.error('Error fetching unassigned tasks:', error);
-        res.status(500).json({ error: 'Failed to fetch unassigned tasks' });
-    }
-});
 
 app.post('/api/tasks/suggestions', async(req, res) => {
     try {
@@ -922,6 +927,94 @@ app.get('/api/debug/users', async(req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ LOAN ROUTES (uses real LOANS schema) ============
+app.get('/api/loans', async(req, res) => {
+    try {
+        const { campaignId } = req.query;
+        const pool = await getConnection();
+
+        let query = `
+      SELECT 
+        l.loan_id,
+        l.customer_name,
+        l.customer_phone,
+        l.loan_type,
+        l.loan_amount,
+        l.branch_id,
+        l.loan_officer,
+        l.disbursement_date,
+        l.maturity_date,
+        l.mandatory_deposit_amount,
+        l.campaign_id,
+        l.imported_at,
+        c.name AS campaign_name
+      FROM LOANS l
+      LEFT JOIN CAMPAIGNS c ON l.campaign_id = c.campaign_id
+      WHERE 1=1
+    `;
+
+        const request = pool.request();
+
+        // campaignId = null → only unassigned loans
+        if (campaignId === 'null' || campaignId === '') {
+            query += ` AND l.campaign_id IS NULL`;
+        } else if (campaignId) {
+            query += ` AND l.campaign_id = @campaignId`;
+            request.input('campaignId', campaignId);
+        }
+
+        query += ` ORDER BY l.imported_at DESC`;
+
+        const result = await request.query(query);
+        res.json(result.recordset || []);
+    } catch (error) {
+        console.error('Error fetching loans:', error);
+        res
+            .status(500)
+            .json({ error: 'Failed to fetch loans', details: error.message });
+    }
+});
+
+app.post('/api/loans/:loanId/assign-campaign', async(req, res) => {
+    try {
+        const { loanId } = req.params;
+        const { campaignId } = req.body;
+        const pool = await getConnection();
+        await pool.request().input('loanId', loanId).input('campaignId', campaignId)
+            .query(`
+        UPDATE LOANS
+        SET campaign_id = @campaignId,
+            updated_at = SYSUTCDATETIME()
+        WHERE loan_id = @loanId
+      `);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error assigning loan to campaign:', error);
+        res.status(500).json({ error: 'Failed to assign loan' });
+    }
+});
+
+app.post('/api/loans/bulk-assign-campaign', async(req, res) => {
+    try {
+        const { loanIds, campaignId } = req.body;
+        if (!Array.isArray(loanIds) || loanIds.length === 0) {
+            return res.status(400).json({ error: 'loanIds required' });
+        }
+        const pool = await getConnection();
+        const ids = loanIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(',');
+        await pool.request().input('campaignId', campaignId).query(`
+        UPDATE LOANS
+        SET campaign_id = @campaignId,
+            updated_at = SYSUTCDATETIME()
+        WHERE loan_id IN (${ids})
+      `);
+        res.json({ success: true, count: loanIds.length });
+    } catch (error) {
+        console.error('Error bulk assigning:', error);
+        res.status(500).json({ error: 'Failed to bulk assign' });
     }
 });
 
