@@ -15,12 +15,14 @@ import {
   Typography,
   Spin,
   Alert,
+  Checkbox,
+  Divider,
 } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { userApi } from '../api/userApi';
 import { useAuth } from '../context/AuthContext';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
 
 const UserManagement = () => {
@@ -33,19 +35,19 @@ const UserManagement = () => {
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
 
-  // ✅ Fetch users from API
+  // ✅ Password change state
+  const [changePassword, setChangePassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  // ============ FETCH USERS ============
   const fetchUsers = async () => {
     setLoading(true);
     setError(null);
     try {
-      console.log('🔄 Fetching users...');
       const response = await userApi.getUsers({ search: searchText });
-      
-      // ✅ Log the response to debug
-      console.log('📊 Users response:', response);
-      console.log('📊 Users data:', response.data);
-      
-      // ✅ Handle both array and object responses
+
       let usersData = [];
       if (Array.isArray(response.data)) {
         usersData = response.data;
@@ -54,11 +56,11 @@ const UserManagement = () => {
       } else if (Array.isArray(response)) {
         usersData = response;
       } else if (response.data && typeof response.data === 'object') {
-        // If it's an object with user data
-        usersData = Object.values(response.data).filter(item => typeof item === 'object' && item.id);
+        usersData = Object.values(response.data).filter(
+          (item) => typeof item === 'object' && item.id
+        );
       }
-      
-      console.log('✅ Processed users:', usersData);
+
       setUsers(usersData);
     } catch (error) {
       console.error('❌ Error fetching users:', error);
@@ -73,10 +75,20 @@ const UserManagement = () => {
     fetchUsers();
   }, [searchText]);
 
+  // ============ RESET PASSWORD STATE ============
+  const resetPasswordState = () => {
+    setChangePassword(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+  };
+
+  // ============ MODAL OPEN HANDLERS ============
   const handleAddUser = () => {
     setEditingUser(null);
     form.resetFields();
     form.setFieldsValue({ role: 'VERIFIER', status: true });
+    resetPasswordState();
     setIsModalOpen(true);
   };
 
@@ -90,9 +102,17 @@ const UserManagement = () => {
       pbxExtension: record.pbxExtension,
       status: record.status === 'ACTIVE',
     });
+    resetPasswordState();
     setIsModalOpen(true);
   };
 
+  const handleModalCancel = () => {
+    setIsModalOpen(false);
+    form.resetFields();
+    resetPasswordState();
+  };
+
+  // ============ DELETE USER ============
   const handleDeleteUser = (record) => {
     Modal.confirm({
       title: 'Confirm Deactivation',
@@ -106,18 +126,41 @@ const UserManagement = () => {
           message.success(`User "${record.fullName}" deactivated.`);
           fetchUsers();
         } catch (error) {
-           console.error('Error deactivating user:', error);
+          console.error('Error deactivating user:', error);
           message.error('Failed to deactivate user');
         }
       },
     });
   };
 
+  // ============ PASSWORD VALIDATION ============
+  const validatePassword = () => {
+    if (!changePassword) return true;
+
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return false;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return false;
+    }
+    setPasswordError('');
+    return true;
+  };
+
+  // ============ SUBMIT ============
   const handleModalSubmit = async (values) => {
+    // Validate password if enabled
+    if (!validatePassword()) {
+      return;
+    }
+
     try {
       const { fullName, username, role, verificationType, pbxExtension, status } = values;
 
       if (editingUser) {
+        // 1. Update user info
         await userApi.updateUser(editingUser.id, {
           fullName,
           role,
@@ -125,10 +168,28 @@ const UserManagement = () => {
           pbxExtension,
           status: status ? 'ACTIVE' : 'INACTIVE',
         });
-        message.success(`User "${fullName}" updated successfully!`);
+
+        // 2. Change password if checkbox was checked
+        if (changePassword) {
+          try {
+            await userApi.changePassword(editingUser.id, newPassword);
+            message.success(`User "${fullName}" updated and password changed.`);
+          } catch (pwError) {
+            console.error('Password change failed:', pwError);
+            const detail =
+              pwError.response?.data?.details ||
+              pwError.response?.data?.error ||
+              'Unknown error';
+            message.error(`User updated, but password change failed: ${detail}`);
+            // Don't close modal - let admin retry
+            return;
+          }
+        } else {
+          message.success(`User "${fullName}" updated successfully!`);
+        }
       } else {
-        // For new users, we need a password
-        const password = 'changeme123'; // Default password
+        // Create new user (default password)
+        const password = newPassword || 'changeme123';
         await userApi.createUser({
           username,
           password,
@@ -142,6 +203,7 @@ const UserManagement = () => {
 
       setIsModalOpen(false);
       form.resetFields();
+      resetPasswordState();
       fetchUsers();
     } catch (error) {
       console.error('Error saving user:', error);
@@ -149,11 +211,7 @@ const UserManagement = () => {
     }
   };
 
-  const handleModalCancel = () => {
-    setIsModalOpen(false);
-    form.resetFields();
-  };
-
+  // ============ MAPS ============
   const roleMap = {
     ADMIN: { color: 'red', text: 'Admin' },
     SUPERVISOR: { color: 'orange', text: 'Supervisor' },
@@ -165,6 +223,7 @@ const UserManagement = () => {
     DEPOSIT: { color: 'green', text: 'Deposit' },
   };
 
+  // ============ COLUMNS ============
   const columns = [
     {
       title: 'No.',
@@ -251,7 +310,8 @@ const UserManagement = () => {
     },
   ];
 
-   if (loading && users.length === 0) {
+  // ============ EARLY RETURNS ============
+  if (loading && users.length === 0) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Spin size="large" tip="Loading users..." />
@@ -276,8 +336,8 @@ const UserManagement = () => {
       </div>
     );
   }
-  
 
+  // ============ RENDER ============
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
@@ -313,7 +373,7 @@ const UserManagement = () => {
         title={editingUser ? 'Edit User' : 'Add New User'}
         open={isModalOpen}
         onCancel={handleModalCancel}
-        width={520}
+        width={560}
         footer={null}
         destroyOnClose
       >
@@ -395,6 +455,83 @@ const UserManagement = () => {
           <Form.Item name="status" label="Status" valuePropName="checked">
             <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
           </Form.Item>
+
+          {/* ============ PASSWORD SECTION ============ */}
+          {editingUser && (
+            <>
+              <Divider style={{ margin: '16px 0' }}>Password</Divider>
+
+              <Form.Item style={{ marginBottom: 12 }}>
+                <Checkbox
+                  checked={changePassword}
+                  onChange={(e) => {
+                    setChangePassword(e.target.checked);
+                    if (!e.target.checked) {
+                      setNewPassword('');
+                      setConfirmPassword('');
+                      setPasswordError('');
+                    }
+                  }}
+                >
+                  <Text strong>Change password</Text>
+                </Checkbox>
+              </Form.Item>
+
+              {changePassword && (
+                <>
+                  <Form.Item
+                    label="New Password"
+                    validateStatus={passwordError && !newPassword ? 'error' : ''}
+                    style={{ marginBottom: 12 }}
+                  >
+                    <Input.Password
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        setPasswordError('');
+                      }}
+                      placeholder="Minimum 6 characters"
+                      autoComplete="new-password"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Confirm Password"
+                    validateStatus={
+                      passwordError && newPassword && newPassword !== confirmPassword
+                        ? 'error'
+                        : ''
+                    }
+                    help={
+                      passwordError && newPassword && newPassword !== confirmPassword
+                        ? 'Passwords do not match'
+                        : ''
+                    }
+                    style={{ marginBottom: 12 }}
+                  >
+                    <Input.Password
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setPasswordError('');
+                      }}
+                      placeholder="Re-enter new password"
+                      autoComplete="new-password"
+                    />
+                  </Form.Item>
+
+                  {passwordError && (
+                    <Alert
+                      message={passwordError}
+                      type="error"
+                      showIcon
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
 
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>

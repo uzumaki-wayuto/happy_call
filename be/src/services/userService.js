@@ -116,14 +116,39 @@ export const userService = {
     },
 
     async changePassword(userId, newPassword) {
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(newPassword, salt);
+        try {
+            console.log('🔐 changePassword called for user:', userId);
 
-        await query(
-            `UPDATE USERS 
-             SET password_hash = @passwordHash, updated_at = GETDATE()
-             WHERE user_id = @userId`, { userId, passwordHash }
-        );
-        return { success: true };
+            if (!userId) throw new Error('userId is required');
+            if (!newPassword || newPassword.length < 8) {
+                throw new Error('Password must be at least 4 characters');
+            }
+
+            const salt = await bcrypt.genSalt(10);
+            const passwordHash = await bcrypt.hash(newPassword, salt);
+
+            // ✅ Coerce userId to int to avoid nvarchar→int conversion
+            const numericId = parseInt(userId, 10);
+            if (isNaN(numericId)) {
+                throw new Error('Invalid user ID');
+            }
+
+            const result = await query(
+                `UPDATE USERS 
+             SET password_hash = @passwordHash, 
+                 updated_at = GETDATE()
+             WHERE user_id = @userId`, { userId: numericId, passwordHash }
+            );
+            console.log('✅ changePassword rows affected:', result.rowsAffected);
+
+            if (!result || !result.rowsAffected || result.rowsAffected[0] === 0) {
+                throw new Error('No user found with that ID');
+            }
+
+            return { success: true };
+        } catch (error) {
+            console.error('❌ changePassword error:', error.message);
+            throw error;
+        }
     },
-};
+}
