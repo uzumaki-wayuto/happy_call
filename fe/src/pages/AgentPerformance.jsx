@@ -30,7 +30,6 @@ import {
 import { reportApi } from '../api/reportApi';
 import * as XLSX from 'xlsx';
 
-
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -45,16 +44,16 @@ const AgentPerformance = () => {
 
   // Calculate overall stats
   const totalAgents = agents.length;
-  const totalAssigned = agents.reduce((sum, a) => sum + a.assigned, 0);
-  const totalCompleted = agents.reduce((sum, a) => sum + a.completed, 0);
-  const totalConfirmed = agents.reduce((sum, a) => sum + a.confirmed, 0);
-  const totalDisputed = agents.reduce((sum, a) => sum + a.disputed, 0);
-  const totalNoContact = agents.reduce((sum, a) => sum + a.noContact, 0);
-  const avgCompletionRate = totalAgents > 0
-    ? (agents.reduce((sum, a) => sum + a.completionRate, 0) / totalAgents).toFixed(1)
-    : 0;
+  const totalAssigned = agents.reduce((sum, a) => sum + (a.assigned || 0), 0);
+  const totalResolved = agents.reduce((sum, a) => sum + (a.resolved || 0), 0);
+  const totalConfirmed = agents.reduce((sum, a) => sum + (a.confirmed || 0), 0);
+  const totalDisputed = agents.reduce((sum, a) => sum + (a.disputed || 0), 0);
+  const totalEscalated = agents.reduce((sum, a) => sum + (a.escalated || 0), 0);
+  const totalNoContact = agents.reduce((sum, a) => sum + (a.noContact || 0), 0);
+  const avgCompletionRate =
+    totalAssigned > 0 ? ((totalConfirmed / totalAssigned) * 100).toFixed(1) : 0;
 
-    useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -69,7 +68,7 @@ const AgentPerformance = () => {
     };
     fetchData();
   }, []);
-  
+
   // Filter agents
   const filteredAgents = agents.filter((agent) => {
     if (searchText) {
@@ -82,7 +81,7 @@ const AgentPerformance = () => {
     return true;
   });
 
-   // ✅ Date range filter (USING dateRange and setDateRange)
+  // ✅ Date range filter (USING dateRange and setDateRange)
   // In real app, this would filter by date
   if (dateRange && dateRange[0] && dateRange[1]) {
     // For mock data, we just log it
@@ -91,9 +90,10 @@ const AgentPerformance = () => {
 
   // Format seconds to MM:SS
   const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const total = Math.round(Number(seconds) || 0); // round to whole seconds
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
   };
 
   // Status color mapping for role badges
@@ -115,7 +115,7 @@ const AgentPerformance = () => {
       dataIndex: 'name',
       key: 'name',
       width: 160,
-      render: (name, record) => (
+      render: (name) => (
         <Space>
           <UserOutlined style={{ color: '#1890ff' }} />
           <span>{name}</span>
@@ -132,57 +132,66 @@ const AgentPerformance = () => {
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
+    // ✅ All counts suffixed with "Tasks"
     {
-      title: 'Assigned',
+      title: 'Assigned Tasks',
       dataIndex: 'assigned',
       key: 'assigned',
-      width: 100,
+      width: 120,
       sorter: (a, b) => a.assigned - b.assigned,
     },
     {
-      title: 'Completed',
-      dataIndex: 'completed',
-      key: 'completed',
-      width: 100,
-      sorter: (a, b) => a.completed - b.completed,
+      title: 'Resolved Tasks',
+      dataIndex: 'resolved',
+      key: 'resolved',
+      width: 120,
+      sorter: (a, b) => a.resolved - b.resolved,
     },
     {
-      title: 'Confirmed',
+      title: 'Confirmed Tasks',
       dataIndex: 'confirmed',
       key: 'confirmed',
-      width: 100,
+      width: 130,
       sorter: (a, b) => a.confirmed - b.confirmed,
-      render: (value) => <span style={{ color: '#52c41a' }}>{value}</span>,
+      render: (value) => <span style={{ color: '#52c41a', fontWeight: 500 }}>{value || 0} </span>,
     },
     {
-      title: 'Disputed',
+      title: 'Disputed Tasks',
       dataIndex: 'disputed',
       key: 'disputed',
-      width: 100,
+      width: 120,
       sorter: (a, b) => a.disputed - b.disputed,
-      render: (value) => <span style={{ color: '#ff4d4f' }}>{value}</span>,
+      render: (value) => <span style={{ color: '#ff4d4f', fontWeight: 500 }}>{value || 0} </span>,
     },
     {
-      title: 'No Contact',
+      title: 'Escalated Tasks', // ✅ NEW
+      dataIndex: 'escalated',
+      key: 'escalated',
+      width: 130,
+      sorter: (a, b) => (a.escalated || 0) - (b.escalated || 0),
+      render: (value) => <span style={{ color: '#eb2f96', fontWeight: 500 }}>{value || 0}</span>,
+    },
+    {
+      title: 'No-Contact Tasks',
       dataIndex: 'noContact',
       key: 'noContact',
-      width: 100,
+      width: 130,
       sorter: (a, b) => a.noContact - b.noContact,
-      render: (value) => <span style={{ color: '#faad14' }}>{value}</span>,
+      render: (value) => <span style={{ color: '#faad14' }}>{value || 0} </span>,
     },
     {
       title: 'Completion %',
       dataIndex: 'completionRate',
       key: 'completionRate',
-      width: 120,
+      width: 130,
       sorter: (a, b) => a.completionRate - b.completionRate,
       render: (rate) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Progress
-            percent={rate}
+            percent={parseFloat(rate?.toFixed?.(0) || rate)}
             size="small"
             strokeColor={rate >= 80 ? '#52c41a' : rate >= 60 ? '#faad14' : '#ff4d4f'}
-            format={() => `${rate.toFixed(0)}%`}
+            format={() => `${Number(rate).toFixed(0)}%`}
           />
         </div>
       ),
@@ -200,21 +209,6 @@ const AgentPerformance = () => {
       ),
     },
     {
-      title: 'Quality Score',
-      key: 'qualityScore',
-      width: 120,
-      render: (_, record) => {
-        // Mock quality score based on completion rate
-        const score = Math.min(100, record.completionRate + 5);
-        return (
-          <Space>
-            <StarOutlined style={{ color: score >= 90 ? '#faad14' : '#d9d9d9' }} />
-            <span>{`${score.toFixed(0)}%`}</span>
-          </Space>
-        );
-      },
-    },
-    {
       title: 'Actions',
       key: 'actions',
       width: 120,
@@ -224,18 +218,6 @@ const AgentPerformance = () => {
         </Button>
       ),
     },
-    {
-  title: 'Exceptions',
-  dataIndex: 'disputed',
-  key: 'disputed',
-  width: 100,
-  render: (value) => (
-    <Space>
-      <ExclamationCircleOutlined style={{ color: value > 0 ? '#ff4d4f' : '#d9d9d9' }} />
-      <span>{value}</span>
-    </Space>
-  ),
-},
   ];
 
   // ✅ Search handler (USES SearchOutlined)
@@ -249,17 +231,16 @@ const AgentPerformance = () => {
     message.info(`Viewing details for ${record.name}`);
   };
 
-
   const handleExport = () => {
     try {
       const exportData = agents.map((agent) => ({
         'Agent ID': agent.id,
         'Agent Name': agent.name,
-        'Role': agent.role,
-        'Assigned': agent.assigned,
-        'Completed': agent.completed,
-        'Confirmed': agent.confirmed,
-        'Disputed': agent.disputed,
+        Role: agent.role,
+        Assigned: agent.assigned,
+        Completed: agent.completed,
+        Confirmed: agent.confirmed,
+        Disputed: agent.disputed,
         'No Contact': agent.noContact,
         'Completion %': `${agent.completionRate.toFixed(1)}%`,
         'Avg Handle Time': formatDuration(agent.avgHandleTime),
@@ -276,16 +257,25 @@ const AgentPerformance = () => {
     }
   };
 
-
   // Top performer (highest completion rate)
-  const topPerformer = agents.reduce((best, current) =>
-    current.completionRate > best.completionRate ? current : best
-  , agents[0]);
+  const topPerformer = agents.reduce(
+    (best, current) => (current.confirmed > (best?.confirmed || 0) ? current : best),
+    agents[0]
+  );
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>Agent Performance</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Agent Performance
+        </Title>
         <Button icon={<FileExcelOutlined />} onClick={handleExport}>
           Export to Excel
         </Button>
@@ -310,7 +300,7 @@ const AgentPerformance = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Total Assigned"
+              title="Total Assigned Tasks"
               value={totalAssigned}
               prefix={<PhoneOutlined />}
               valueStyle={{ color: '#1890ff' }}
@@ -320,7 +310,17 @@ const AgentPerformance = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Overall Completion"
+              title="Total Resolved Tasks"
+              value={totalResolved}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Overall Completion Rate"
               value={avgCompletionRate}
               suffix="%"
               prefix={<CheckCircleOutlined />}
@@ -331,23 +331,48 @@ const AgentPerformance = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Top Performer"
-              value={topPerformer?.name || 'N/A'}
-              prefix={<StarOutlined style={{ color: '#faad14' }} />}
-              valueStyle={{ color: '#faad14', fontSize: 16 }}
+              title="Total Confirmed Tasks"
+              value={totalConfirmed}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-  <Card>
-    <Statistic
-      title="Total Exceptions"
-      value={totalDisputed}
-      prefix={<ExclamationCircleOutlined />}
-      valueStyle={{ color: '#ff4d4f' }}
-    />
-  </Card>
-  </Col>
+          <Card>
+            <Statistic
+              title="Total Disputed Tasks"
+              value={totalDisputed}
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total Escalated Tasks"
+              value={totalEscalated}
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#eb2f96', fontSize: 20 }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Top Performer"
+              value={topPerformer?.name || 'N/A'}
+              prefix={<StarOutlined style={{ color: '#faad14' }} />}
+              valueStyle={{ color: '#faad14', fontSize: 14, lineHeight: 1.2 }}
+            />
+            {topPerformer && (
+              <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                {topPerformer.confirmed} confirmed / {topPerformer.assigned} assigned
+              </div>
+            )}
+          </Card>
+        </Col>
       </Row>
 
       {/* ✅ FILTERS - All filter states are USED here */}
@@ -411,16 +436,19 @@ const AgentPerformance = () => {
                 strokeColor="#52c41a"
                 showInfo={false}
               />
-              <Text type="secondary">{totalConfirmed} of {totalAssigned} calls confirmed</Text>
+              <Text type="secondary">
+                {totalConfirmed} of {totalAssigned} calls confirmed
+              </Text>
             </div>
           </Card>
         </Col>
         <Col span={8}>
           <Card>
             <div style={{ textAlign: 'center' }}>
-              <Title level={4}><ExclamationCircleOutlined style={{ color: '#ff4d4f', marginRight: 8 }} />
-  Disputed Rate
-</Title>
+              <Title level={4}>
+                <ExclamationCircleOutlined style={{ color: '#ff4d4f', marginRight: 8 }} />
+                Disputed Rate
+              </Title>
               <div style={{ fontSize: 48, color: '#ff4d4f', fontWeight: 'bold' }}>
                 {totalAssigned > 0 ? ((totalDisputed / totalAssigned) * 100).toFixed(1) : 0}%
               </div>
@@ -429,7 +457,9 @@ const AgentPerformance = () => {
                 strokeColor="#ff4d4f"
                 showInfo={false}
               />
-              <Text type="secondary">{totalDisputed} of {totalAssigned} calls disputed</Text>
+              <Text type="secondary">
+                {totalDisputed} of {totalAssigned} calls disputed
+              </Text>
             </div>
           </Card>
         </Col>
@@ -445,16 +475,15 @@ const AgentPerformance = () => {
                 strokeColor="#faad14"
                 showInfo={false}
               />
-              <Text type="secondary">{totalNoContact} of {totalAssigned} calls no contact</Text>
+              <Text type="secondary">
+                {totalNoContact} of {totalAssigned} calls no contact
+              </Text>
             </div>
           </Card>
         </Col>
-
       </Row>
-       {/* ✅ Selected Agent details (if any) */}
-      {selectedAgent && (
-        <Divider orientation="left">Selected Agent: {selectedAgent.name}</Divider>
-      )}
+      {/* ✅ Selected Agent details (if any) */}
+      {selectedAgent && <Divider orientation="left">Selected Agent: {selectedAgent.name}</Divider>}
     </div>
   );
 };

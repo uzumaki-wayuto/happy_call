@@ -30,6 +30,7 @@ import {
 import CallTrendChart from '../components/common/CallTrendChart';
 import { dashboardApi } from '../api/dashboardApi';
 import { useAuth } from '../context/AuthContext';
+import { reportApi } from '../api/reportApi';
 
 const { Title, Text } = Typography;
 
@@ -60,9 +61,7 @@ const SupervisorDashboard = () => {
       const [statsRes, branchesRes, agentsRes] = await Promise.all([
         dashboardApi.getSupervisorStats(),
         dashboardApi.getTopBranches(),
-        dashboardApi.getAgentPerformance
-          ? dashboardApi.getAgentPerformance()
-          : Promise.resolve({ data: [] }),
+        reportApi.getAgentPerformance(),
       ]);
 
       setStats(statsRes.data || statsRes || {});
@@ -119,20 +118,20 @@ const SupervisorDashboard = () => {
       ),
     },
     {
-      title: 'Assigned',
+      title: 'Assigned Tasks',
       dataIndex: 'assigned',
       key: 'assigned',
       width: 100,
     },
     {
-      title: 'Completed',
-      dataIndex: 'completed',
-      key: 'completed',
+      title: 'Completed Tasks',
+      dataIndex: 'resolved',
+      key: 'resolved',
       width: 100,
-      render: (value) => <span style={{ color: '#52c41a' }}>{value}</span>,
+      render: (value) => <span style={{ color: '#52c41a' }}>{value || 0}</span>,
     },
     {
-      title: 'Completion %',
+      title: 'Complete Rate',
       dataIndex: 'completionRate',
       key: 'completionRate',
       width: 120,
@@ -146,18 +145,11 @@ const SupervisorDashboard = () => {
       ),
     },
     {
-      title: 'Disputed',
-      dataIndex: 'disputed',
-      key: 'disputed',
+      title: 'Exceptions',
+      dataIndex: 'exception',
+      key: 'exception',
       width: 90,
       render: (value) => <Badge color="red" count={value || 0} />,
-    },
-    {
-      title: 'No Contact',
-      dataIndex: 'noContact',
-      key: 'noContact',
-      width: 90,
-      render: (value) => <Badge color="gold" count={value || 0} />,
     },
   ];
 

@@ -177,14 +177,18 @@ export const dashboardService = {
         try {
             const pool = await getConnection();
             const result = await pool.request().query(`
-                SELECT 
-                    COUNT(*) as totalAssigned,
-                    SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END) as remaining,
-                    SUM(CASE WHEN status IN ('DISPUTED', 'ESCALATED') THEN 1 ELSE 0 END) as exceptions
-                FROM VERIFICATION_TASKS
-                WHERE status NOT IN ('CLOSED')
-            `);
+            SELECT 
+                COUNT(*) as totalAssigned,
+                SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'DISPUTED' THEN 1 ELSE 0 END) as disputed,
+                SUM(CASE WHEN status = 'ESCALATED' THEN 1 ELSE 0 END) as escalated,
+                SUM(CASE WHEN status = 'NO_CONTACT' THEN 1 ELSE 0 END) as noContact,
+                SUM(CASE WHEN status IN ('ASSIGNED','IN_PROGRESS','PENDING') THEN 1 ELSE 0 END) as remaining,
+                SUM(CASE WHEN status IN ('DISPUTED','ESCALATED') THEN 1 ELSE 0 END) as exceptions,
+                SUM(CASE WHEN status IN ('CONFIRMED','DISPUTED','ESCALATED','NO_CONTACT') THEN 1 ELSE 0 END) as resolved
+            FROM VERIFICATION_TASKS
+            WHERE status NOT IN ('CLOSED')
+        `);
 
             const stats = result.recordset[0] || {};
             return {
@@ -197,8 +201,12 @@ export const dashboardService = {
             return {
                 totalAssigned: 0,
                 completed: 0,
+                disputed: 0,
+                escalated: 0,
+                noContact: 0,
                 remaining: 0,
                 exceptions: 0,
+                resolved: 0,
                 completionRate: 0,
             };
         }
@@ -207,35 +215,140 @@ export const dashboardService = {
     getAgentStats: async(agentId) => {
         try {
             const pool = await getConnection();
-            const result = await pool.request().input('agentId', agentId).query(`
-                    SELECT 
-                ISNULL(COUNT(*), 0) as todayQueue,
-                ISNULL(SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END), 0) as completed,
-                ISNULL(SUM(CASE WHEN status IN ('ASSIGNED', 'IN_PROGRESS', 'PENDING') THEN 1 ELSE 0 END), 0) as pending,
-                ISNULL(SUM(CASE WHEN status IN ('DISPUTED', 'ESCALATED') THEN 1 ELSE 0 END), 0) as exceptions
-            FROM VERIFICATION_TASKS
-            WHERE assigned_agent_id = @agentId
-            AND status NOT IN ('CLOSED')
-                `);
+            const today = new Date().toISOString().slice(0, 10);
 
-            const stats = result.recordset[0] || {};
+            // ---- TASK METRICS ----
+            const taskResult = await pool.request()
+                .input('agentId', agentId)
+                .input('today', today)
+                .query(`
+                SELECT 
+                    -- All-time tasks (non-closed)
+                    COUNT(*) AS totalTasks,
+                    SUM(CASE WHEN t.status = 'CONFIRMED' THEN 1 ELSE 0 END) AS totalConfirmed,
+                    SUM(CASE WHEN t.status = 'DISPUTED' THEN 1 ELSE 0 END) AS totalDisputed,
+                    SUM(CASE WHEN t.status = 'ESCALATED' THEN 1 ELSE 0 END) AS totalEscalated,
+                    SUM(CASE WHEN t.status = 'NO_CONTACT' THEN 1 ELSE 0 END) AS totalNoContact,
+                    SUM(CASE WHEN t.status IN ('DISPUTED','ESCALATED') THEN 1 ELSE 0 END) AS totalExceptions,
+                    SUM(CASE WHEN t.status IN ('ASSIGNED','IN_PROGRESS','PENDING') THEN 1 ELSE 0 END) AS totalPending,
+
+                    -- Today's tasks (by due_datetime)
+                    SUM(CASE WHEN CAST(t.due_datetime AS DATE) = @today THEN 1 ELSE 0 END) AS todayTasks,
+                    SUM(CASE WHEN CAST(t.due_datetime AS DATE) = @today 
+                             AND t.status = 'CONFIRMED' THEN 1 ELSE 0 END) AS todayConfirmed,
+                    SUM(CASE WHEN CAST(t.due_datetime AS DATE) = @today 
+                             AND t.status IN ('DISPUTED','ESCALATED') THEN 1 ELSE 0 END) AS todayExceptions
+                FROM VERIFICATION_TASKS t
+                WHERE t.assigned_agent_id = @agentId
+                  AND t.status NOT IN ('CLOSED')
+            `);
+
+            // ---- CALL METRICS ----
+            const callResult = await pool.request()
+                .input('agentId', agentId)
+                .input('today', today)
+                .query(`
+                SELECT 
+                    -- All-time
+                    COUNT(*) AS totalCalls,
+                    SUM(CASE WHEN result = 'CONFIRMED' THEN 1 ELSE 0 END) AS totalConfirmedCalls,
+                    SUM(CASE WHEN result = 'DISPUTED' THEN 1 ELSE 0 END) AS totalDisputedCalls,
+                    SUM(CASE WHEN result = 'NO_CONTACT' THEN 1 ELSE 0 END) AS totalNoContactCalls,
+
+                    -- Today
+                    SUM(CASE WHEN CAST(a.created_at AS DATE) = @today THEN 1 ELSE 0 END) AS todayCalls,
+                    SUM(CASE WHEN CAST(a.created_at AS DATE) = @today 
+                             AND a.result = 'CONFIRMED' THEN 1 ELSE 0 END) AS todayConfirmedCalls,
+                    SUM(CASE WHEN CAST(a.created_at AS DATE) = @today 
+                             AND a.result = 'DISPUTED' THEN 1 ELSE 0 END) AS todayDisputedCalls,
+                    SUM(CASE WHEN CAST(a.created_at AS DATE) = @today 
+                             AND a.result = 'NO_CONTACT' THEN 1 ELSE 0 END) AS todayNoContactCalls
+                FROM CALL_ATTEMPTS a
+                WHERE a.agent_id = @agentId
+            `);
+
+            // ---- CALLBACK METRICS ----
+            const callbackResult = await pool.request()
+                .input('agentId', agentId)
+                .input('today', today)
+                .query(`
+                SELECT 
+                    COUNT(*) AS totalCallbacks,
+                    SUM(CASE WHEN CAST(cb.callback_date AS DATE) = @today THEN 1 ELSE 0 END) AS todayCallbacks,
+                    SUM(CASE WHEN cb.status = 'PENDING' THEN 1 ELSE 0 END) AS pendingCallbacks,
+                    SUM(CASE WHEN cb.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCallbacks
+                FROM CALLBACKS cb
+                WHERE cb.assigned_to = @agentId
+            `);
+
+            const tasks = taskResult.recordset[0] || {};
+            const calls = callResult.recordset[0] || {};
+            const callbacks = callbackResult.recordset[0] || {};
+
             return {
-                todayQueue: stats.todayQueue || 0,
-                completed: stats.completed || 0,
-                pending: stats.pending || 0,
-                exceptions: stats.exceptions || 0,
-                completionRate: stats.todayQueue > 0 ?
-                    ((stats.completed / stats.todayQueue) * 100).toFixed(1) :
+                // ---- TASKS: Today ----
+                todayTasks: tasks.todayTasks || 0,
+                todayConfirmed: tasks.todayConfirmed || 0,
+                todayExceptions: tasks.todayExceptions || 0,
+
+                // ---- TASKS: All-time ----
+                totalTasks: tasks.totalTasks || 0,
+                totalConfirmed: tasks.totalConfirmed || 0,
+                totalDisputed: tasks.totalDisputed || 0,
+                totalEscalated: tasks.totalEscalated || 0,
+                totalNoContact: tasks.totalNoContact || 0,
+                totalExceptions: tasks.totalExceptions || 0,
+                totalPending: tasks.totalPending || 0,
+
+                // ---- CALLS: Today ----
+                todayCalls: calls.todayCalls || 0,
+                todayConfirmedCalls: calls.todayConfirmedCalls || 0,
+                todayDisputedCalls: calls.todayDisputedCalls || 0,
+                todayNoContactCalls: calls.todayNoContactCalls || 0,
+
+                // ---- CALLS: All-time ----
+                totalCalls: calls.totalCalls || 0,
+                totalConfirmedCalls: calls.totalConfirmedCalls || 0,
+                totalDisputedCalls: calls.totalDisputedCalls || 0,
+                totalNoContactCalls: calls.totalNoContactCalls || 0,
+
+                // ---- CALLBACKS ----
+                todayCallbacks: callbacks.todayCallbacks || 0,
+                totalCallbacks: callbacks.totalCallbacks || 0,
+                pendingCallbacks: callbacks.pendingCallbacks || 0,
+                completedCallbacks: callbacks.completedCallbacks || 0,
+
+                // ---- Derived ----
+                completionRate: tasks.totalTasks > 0 ?
+                    ((tasks.totalConfirmed / tasks.totalTasks) * 100).toFixed(1) :
                     '0.0',
             };
         } catch (error) {
             console.error('Error in getAgentStats:', error);
             return {
-                todayQueue: 0,
-                completed: 0,
-                pending: 0,
-                exceptions: 0,
-                completionRate: 0,
+                todayTasks: 0,
+                todayConfirmed: 0,
+                todayExceptions: 0,
+                totalTasks: 0,
+                totalConfirmed: 0,
+                totalDisputed: 0,
+                totalEscalated: 0,
+                totalNoContact: 0,
+                totalExceptions: 0,
+                totalPending: 0,
+                todayCalls: 0,
+                todayConfirmedCalls: 0,
+                todayDisputedCalls: 0,
+                todayNoContactCalls: 0,
+                totalCalls: 0,
+                totalConfirmedCalls: 0,
+                totalDisputedCalls: 0,
+                totalNoContactCalls: 0,
+                todayCallbacks: 0,
+                totalCallbacks: 0,
+                pendingCallbacks: 0,
+                completedCallbacks: 0,
+                completionRate: '0.0',
             };
         }
     },

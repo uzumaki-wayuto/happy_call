@@ -19,6 +19,7 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   UserOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import {
   LineChart,
@@ -54,21 +55,36 @@ const Reports = () => {
   const [resultDistribution, setResultDistribution] = useState([]);
   const [hasData, setHasData] = useState(false);
 
-
   // KPI calculations
   const totalTasks = agentPerformance.reduce((sum, a) => sum + (a.assigned || 0), 0);
-  const totalCompleted = agentPerformance.reduce((sum, a) => sum + (a.completed || 0), 0);
   const totalConfirmed = agentPerformance.reduce((sum, a) => sum + (a.confirmed || 0), 0);
   const totalDisputed = agentPerformance.reduce((sum, a) => sum + (a.disputed || 0), 0);
+  const totalEscalated = agentPerformance.reduce((sum, a) => sum + (a.escalated || 0), 0);
   const totalNoContact = agentPerformance.reduce((sum, a) => sum + (a.noContact || 0), 0);
+  const totalResolved = agentPerformance.reduce((sum, a) => sum + (a.resolved || 0), 0);
+  const totalPending = agentPerformance.reduce((sum, a) => sum + (a.pending || 0), 0);
 
-  const confirmedRate = totalTasks > 0 ? ((totalConfirmed / totalTasks) * 100).toFixed(1) : 0;
+  // ✅ Completion Rate = Confirmed / Total
+  const completionRate = totalTasks > 0 ? ((totalConfirmed / totalTasks) * 100).toFixed(1) : 0;
+
+  // ✅ Disputed Rate = Disputed / Total
   const disputedRate = totalTasks > 0 ? ((totalDisputed / totalTasks) * 100).toFixed(1) : 0;
-  const completionRate = totalTasks > 0 ? ((totalCompleted / totalTasks) * 100).toFixed(1) : 0;
 
-  const avgHandleTime = agentPerformance.length > 0
-    ? Math.round(agentPerformance.reduce((sum, a) => sum + (a.avgHandleTime || 0), 0) / agentPerformance.length)
-    : 0;
+  const escalatedRate = totalTasks > 0 ? ((totalEscalated / totalTasks) * 100).toFixed(1) : '0.0';
+
+  const pendingRate = totalTasks > 0 ? ((totalPending / totalTasks) * 100).toFixed(1) : '0.0';
+
+  // Optional — total exception rate if you still want it
+  const exceptionRate =
+    totalTasks > 0 ? (((totalDisputed + totalEscalated) / totalTasks) * 100).toFixed(1) : '0.0';
+
+  const avgHandleTime =
+    agentPerformance.length > 0
+      ? Math.round(
+          agentPerformance.reduce((sum, a) => sum + (a.avgHandleTime || 0), 0) /
+            agentPerformance.length
+        )
+      : 0;
 
   // ✅ Fetch data from API
   const fetchData = async () => {
@@ -79,17 +95,17 @@ const Reports = () => {
         reportApi.getTrendData(),
         reportApi.getResultDistribution(),
       ]);
-       const performanceData = performanceRes.data || [];
+      const performanceData = performanceRes.data || [];
       const trendDataResult = trendRes.data || [];
       const distributionData = distributionRes.data || [];
-       setAgentPerformance(performanceData);
+      setAgentPerformance(performanceData);
       setTrendData(trendDataResult);
       setResultDistribution(distributionData);
-      
-      // Check if any data exists
-      const hasAnyData = performanceData.length > 0 || trendDataResult.length > 0 || distributionData.length > 0;
-      setHasData(hasAnyData);
 
+      // Check if any data exists
+      const hasAnyData =
+        performanceData.length > 0 || trendDataResult.length > 0 || distributionData.length > 0;
+      setHasData(hasAnyData);
     } catch (error) {
       console.error('Error fetching report data:', error);
       message.error('Failed to load report data');
@@ -103,11 +119,12 @@ const Reports = () => {
     fetchData();
   }, []);
 
-  const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+ const formatDuration = (seconds) => {
+    const total = Math.round(Number(seconds) || 0);   // round to whole seconds
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+};
 
   // Filter agent performance data
   const filteredAgents = agentPerformance.filter((agent) => {
@@ -128,32 +145,44 @@ const Reports = () => {
     { title: 'Confirmed', dataIndex: 'confirmed', key: 'confirmed', width: 100 },
     { title: 'Disputed', dataIndex: 'disputed', key: 'disputed', width: 100 },
     { title: 'No Contact', dataIndex: 'noContact', key: 'noContact', width: 100 },
-    { title: 'Completion %', dataIndex: 'completionRate', key: 'completionRate', width: 120, render: (rate) => `${(rate || 0).toFixed(1)}%` },
-    { title: 'Avg Handle Time', dataIndex: 'avgHandleTime', key: 'avgHandleTime', width: 140, render: (time) => formatDuration(time || 0) },
+    {
+      title: 'Completion %',
+      dataIndex: 'completionRate',
+      key: 'completionRate',
+      width: 120,
+      render: (rate) => `${(rate || 0).toFixed(1)}%`,
+    },
+    {
+      title: 'Avg Handle Time',
+      dataIndex: 'avgHandleTime',
+      key: 'avgHandleTime',
+      width: 140,
+      render: (time) => formatDuration(time || 0),
+    },
   ];
 
   // Update chart tooltips
-const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-        return (
-            <div>
-                <p>{label}</p>
-                <p>{formatCurrency(payload[0].value)}</p>
-            </div>
-        );
+      return (
+        <div>
+          <p>{label}</p>
+          <p>{formatCurrency(payload[0].value)}</p>
+        </div>
+      );
     }
     return null;
-};
+  };
 
   const handleExport = () => {
     const exportData = agentPerformance.map((agent) => ({
       'Agent ID': agent.id,
       'Agent Name': agent.name,
-      'Role': agent.role,
-      'Assigned': agent.assigned,
-      'Completed': agent.completed,
-      'Confirmed': agent.confirmed,
-      'Disputed': agent.disputed,
+      Role: agent.role,
+      Assigned: agent.assigned,
+      Completed: agent.completed,
+      Confirmed: agent.confirmed,
+      Disputed: agent.disputed,
       'No Contact': agent.noContact,
       'Completion %': `${(agent.completionRate || 0).toFixed(1)}%`,
       'Avg Handle Time': formatDuration(agent.avgHandleTime || 0),
@@ -175,8 +204,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>Reports & Statistics</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Reports & Statistics
+        </Title>
         <Button type="primary" icon={<FileExcelOutlined />} onClick={handleExport}>
           Export to Excel
         </Button>
@@ -204,14 +242,18 @@ const CustomTooltip = ({ active, payload, label }) => {
             onChange={(value) => setAgentFilter(value)}
           >
             {agentOptions.map((opt) => (
-              <Option key={opt.value} value={opt.value}>{opt.label}</Option>
+              <Option key={opt.value} value={opt.value}>
+                {opt.label}
+              </Option>
             ))}
           </Select>
-          <Button onClick={() => {
-            setDateRange(null);
-            setTypeFilter('all');
-            setAgentFilter('all');
-          }}>
+          <Button
+            onClick={() => {
+              setDateRange(null);
+              setTypeFilter('all');
+              setAgentFilter('all');
+            }}
+          >
             Reset Filters
           </Button>
         </Space>
@@ -219,17 +261,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 
       {/* KPI Cards */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Total Tasks"
               value={totalTasks}
-              prefix={<UserOutlined />}
+              prefix={<FileTextOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={5}>
           <Card>
             <Statistic
               title="Completion Rate"
@@ -238,9 +280,12 @@ const CustomTooltip = ({ active, payload, label }) => {
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: '#52c41a' }}
             />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              {totalConfirmed} / {totalTasks} confirmed
+            </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={5}>
           <Card>
             <Statistic
               title="Disputed Rate"
@@ -249,26 +294,43 @@ const CustomTooltip = ({ active, payload, label }) => {
               prefix={<ExclamationCircleOutlined />}
               valueStyle={{ color: '#ff4d4f' }}
             />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              {totalDisputed} / {totalTasks} disputed
+            </div>
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={5}>
           <Card>
             <Statistic
-              title="Avg Handle Time"
-              value={formatDuration(avgHandleTime)}
+              title="Escalated Rate"
+              value={escalatedRate}
+              suffix="%"
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#eb2f96' }}
+            />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              {totalEscalated} / {totalTasks} escalated
+            </div>
+          </Card>
+        </Col>
+        <Col span={5}>
+          <Card>
+            <Statistic
+              title="Pending Rate"
+              value={pendingRate}
+              suffix="%"
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#faad14' }}
             />
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              {totalPending} / {totalTasks} pending
+            </div>
           </Card>
         </Col>
       </Row>
 
       {/* Call Trend Chart */}
-      <CallTrendChart
-        type="global"
-        title="Detailed Call Trend Analysis"
-        showAgentFilter={true}
-      />
+      <CallTrendChart type="global" title="Detailed Call Trend Analysis" showAgentFilter={true} />
 
       {/* Charts Row */}
       <Row gutter={16} style={{ marginBottom: 16 }}>

@@ -136,7 +136,7 @@ const Campaigns = () => {
     setIsViewModalOpen(true);
   };
 
- // ✅ View Loans handler
+  // ✅ View Loans handler
   const handleViewLoans = async (record) => {
     setSelectedCampaign(record);
     try {
@@ -159,7 +159,7 @@ const Campaigns = () => {
         startDate: values.startDate?.format('YYYY-MM-DD'),
         endDate: values.endDate?.format('YYYY-MM-DD'),
         status: values.status,
-        createdBy: 1, // Default admin ID
+        createdByName: 'Admin', // Default admin ID
       };
 
       if (editingCampaign) {
@@ -731,7 +731,7 @@ const Campaigns = () => {
               </Col>
               <Col span={12}>
                 <Text strong>Created By: </Text>
-                {selectedCampaign.createdBy}
+                {selectedCampaign.createdByName || 'System'}
               </Col>
               <Col span={12}>
                 <Text strong>Start Date: </Text>
@@ -795,7 +795,7 @@ const Campaigns = () => {
           </div>
         )}
       </Modal>
-       {/* Add Loans Modal */}
+      {/* Add Loans Modal */}
       <Modal
         title={`Loans in "${selectedCampaign?.name}"`}
         open={showLoansModal}

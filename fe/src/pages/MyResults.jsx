@@ -23,6 +23,8 @@ import {
   PhoneOutlined,
   DownloadOutlined,
   ClockCircleOutlined,
+  DisconnectOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { attemptApi } from '../api/attemptApi';
 import { taskApi } from '../api/taskApi';
@@ -36,29 +38,35 @@ const { RangePicker } = DatePicker;
 const MyResults = () => {
   const { user } = useAuth();
 
-  const [callAttempts, setCallAttempts] = useState([]); // ✅ Fixed: using callAttempts
+  // ============ STATE ============
+  const [callAttempts, setCallAttempts] = useState([]);
   const [taskStats, setTaskStats] = useState({
     totalTasks: 0,
-    completedTasks: 0,
+    confirmedTasks: 0,
     disputedTasks: 0,
+    escalatedTasks: 0,
     noContactTasks: 0,
     pendingTasks: 0,
     completionRate: 0,
+  });
+  const [callStats, setCallStats] = useState({
+    totalCalls: 0,
+    confirmedCalls: 0,
+    disputedCalls: 0,
+    noContactCalls: 0,
   });
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState(null);
   const [resultFilter, setResultFilter] = useState('all');
 
-
-  // ✅ Fetch call attempts (CALL_ATTEMPTS) for recent calls
+  // ============ FETCH CALL ATTEMPTS ============
   const fetchCallAttempts = async () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const response = await attemptApi.getMyAttempts(user.id, { limit: 100 });
+      const response = await attemptApi.getMyAttempts(user.id, { limit: 1000 });
       const attempts = response.data || [];
-      
-      // Map and format the data
+
       const formattedAttempts = attempts.map((attempt) => ({
         id: attempt.id || attempt.attempt_id,
         loanId: attempt.loanId || attempt.loan_id,
@@ -71,8 +79,16 @@ const MyResults = () => {
         timestamp: attempt.timestamp || attempt.createdAt || attempt.created_at,
         callMethod: attempt.callMethod || attempt.call_method || 'CLICK_TO_CALL',
       }));
-      
+
       setCallAttempts(formattedAttempts);
+
+      // Compute call-level stats from attempts
+      setCallStats({
+        totalCalls: formattedAttempts.length,
+        confirmedCalls: formattedAttempts.filter((a) => a.result === 'CONFIRMED').length,
+        disputedCalls: formattedAttempts.filter((a) => a.result === 'DISPUTED').length,
+        noContactCalls: formattedAttempts.filter((a) => a.result === 'NO_CONTACT').length,
+      });
     } catch (error) {
       console.error('Error fetching call attempts:', error);
       message.error('Failed to load your call history');
@@ -81,28 +97,30 @@ const MyResults = () => {
     }
   };
 
-   // ✅ Fetch task statistics (VERIFICATION_TASKS) for the stats cards
+  // ============ FETCH TASK STATS ============
   const fetchTaskStats = async () => {
     if (!user?.id) return;
     try {
       const response = await taskApi.getTasks({ agentId: user.id });
       const tasks = response.data || [];
-      
+
       const total = tasks.length;
-      const completed = tasks.filter((t) => t.status === 'CONFIRMED').length;
+      const confirmed = tasks.filter((t) => t.status === 'CONFIRMED').length;
       const disputed = tasks.filter((t) => t.status === 'DISPUTED').length;
+      const escalated = tasks.filter((t) => t.status === 'ESCALATED').length;
       const noContact = tasks.filter((t) => t.status === 'NO_CONTACT').length;
-      const pending = tasks.filter(
-        (t) => t.status === 'PENDING' || t.status === 'ASSIGNED' || t.status === 'IN_PROGRESS'
+      const pending = tasks.filter((t) =>
+        ['PENDING', 'ASSIGNED', 'IN_PROGRESS'].includes(t.status)
       ).length;
-      
+
       setTaskStats({
         totalTasks: total,
-        completedTasks: completed,
+        confirmedTasks: confirmed,
         disputedTasks: disputed,
+        escalatedTasks: escalated,
         noContactTasks: noContact,
         pendingTasks: pending,
-        completionRate: total > 0 ? ((completed / total) * 100).toFixed(1) : 0,
+        completionRate: total > 0 ? ((confirmed / total) * 100).toFixed(1) : 0,
       });
     } catch (error) {
       console.error('Error fetching task stats:', error);
@@ -112,21 +130,20 @@ const MyResults = () => {
   useEffect(() => {
     fetchCallAttempts();
     fetchTaskStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // ✅ Filter call attempts for the table
+  // ============ FILTER CALL ATTEMPTS ============
   const getFilteredAttempts = () => {
     let data = [...callAttempts];
 
-    // Result filter
     if (resultFilter !== 'all') {
       data = data.filter((item) => item.result === resultFilter);
     }
 
-    // Date range filter
     if (dateRange && dateRange[0] && dateRange[1]) {
-      const start = dateRange[0];
-      const end = dateRange[1];
+      const start = dateRange[0].startOf('day').toDate();
+      const end = dateRange[1].endOf('day').toDate();
       data = data.filter((item) => {
         if (!item.timestamp) return true;
         const itemDate = new Date(item.timestamp);
@@ -139,7 +156,6 @@ const MyResults = () => {
 
   const filteredAttempts = getFilteredAttempts();
 
-   // Status color mapping
   const resultMap = {
     CONFIRMED: { color: 'green', text: 'Confirmed' },
     DISPUTED: { color: 'red', text: 'Disputed' },
@@ -152,14 +168,14 @@ const MyResults = () => {
     DEPOSIT: 'green',
   };
 
-
-   const columns = [
+  // ============ TABLE COLUMNS ============
+  const columns = [
     {
       title: 'Date/Time',
       dataIndex: 'timestamp',
       key: 'timestamp',
       width: 160,
-      render: (date) => date ? new Date(date).toLocaleString() : '-',
+      render: (date) => (date ? new Date(date).toLocaleString() : '-'),
     },
     {
       title: 'Loan ID',
@@ -212,7 +228,7 @@ const MyResults = () => {
       dataIndex: 'duration',
       key: 'duration',
       width: 100,
-      render: (duration) => duration ? `${duration}s` : '-',
+      render: (duration) => (duration ? `${duration}s` : '-'),
     },
     {
       title: 'Notes',
@@ -223,34 +239,57 @@ const MyResults = () => {
     },
   ];
 
- const handleExport = () => {
+  const handleExport = () => {
     if (filteredAttempts.length === 0) {
       message.warning('No data to export');
       return;
     }
-    // TODO: Implement export functionality
     message.info('Export functionality coming soon');
   };
 
+  // ============ RENDER ============
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0 }}>My Call Results</Title>
+      {/* ===== Header ===== */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          My Results
+        </Title>
         <Button icon={<DownloadOutlined />} onClick={handleExport}>
           Export CSV
         </Button>
       </div>
 
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Track your personal call performance and results.
+        Track your personal task completion and call activity.
       </Text>
 
-      {/* KPI Cards - From VERIFICATION_TASKS */}
+      {/* ============================================
+          SECTION 1: TASK-LEVEL SUMMARY
+          ============================================ */}
+      <Divider orientation="left">
+        <Space>
+          <PhoneOutlined />
+          <span>Task Summary</span>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+            (Verification items assigned to you)
+          </Text>
+        </Space>
+      </Divider>
+
+      {/* Task KPI Cards */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}>
           <Card>
             <Statistic
-              title="Total Assigned"
+              title="Total Tasks"
               value={taskStats.totalTasks}
               prefix={<PhoneOutlined />}
               valueStyle={{ color: '#1890ff' }}
@@ -260,8 +299,8 @@ const MyResults = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Completed"
-              value={taskStats.completedTasks}
+              title="Confirmed Tasks"
+              value={taskStats.confirmedTasks}
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -274,14 +313,16 @@ const MyResults = () => {
               value={taskStats.completionRate}
               suffix="%"
               prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: taskStats.completionRate > 70 ? '#52c41a' : '#faad14' }}
+              valueStyle={{
+                color: taskStats.completionRate > 70 ? '#52c41a' : '#faad14',
+              }}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
             <Statistic
-              title="Pending"
+              title="Pending Tasks"
               value={taskStats.pendingTasks}
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#faad14' }}
@@ -290,49 +331,210 @@ const MyResults = () => {
         </Col>
       </Row>
 
-      {/* Result Summary - From VERIFICATION_TASKS */}
-      <Card style={{ marginBottom: 16 }}>
-        <Title level={5}>Task Status Summary</Title>
+      {/* Task Status Breakdown */}
+      <Card style={{ marginBottom: 24 }}>
+        <Title level={5}>Task Status Breakdown</Title>
         <Row gutter={16}>
           <Col span={6}>
-            <div style={{ textAlign: 'center', padding: '12px', background: '#f6ffed', borderRadius: 8 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#f6ffed',
+                borderRadius: 8,
+              }}
+            >
               <div style={{ fontSize: 24, color: '#52c41a', fontWeight: 'bold' }}>
-                {taskStats.completedTasks}
+                {taskStats.confirmedTasks}
               </div>
-              <div style={{ color: '#888' }}>✅ Confirmed</div>
+              <div style={{ color: '#888', fontSize: 12 }}>✅ Confirmed</div>
             </div>
           </Col>
           <Col span={6}>
-            <div style={{ textAlign: 'center', padding: '12px', background: '#fff2f0', borderRadius: 8 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#fff2f0',
+                borderRadius: 8,
+              }}
+            >
               <div style={{ fontSize: 24, color: '#ff4d4f', fontWeight: 'bold' }}>
                 {taskStats.disputedTasks}
               </div>
-              <div style={{ color: '#888' }}>⚠️ Disputed</div>
+              <div style={{ color: '#888', fontSize: 12 }}>⚠️ Disputed</div>
             </div>
           </Col>
           <Col span={6}>
-            <div style={{ textAlign: 'center', padding: '12px', background: '#fffbe6', borderRadius: 8 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#fff0f6',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 24, color: '#eb2f96', fontWeight: 'bold' }}>
+                {taskStats.escalatedTasks}
+              </div>
+              <div style={{ color: '#888', fontSize: 12 }}>📌 Escalated</div>
+            </div>
+          </Col>
+          <Col span={6}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#fffbe6',
+                borderRadius: 8,
+              }}
+            >
               <div style={{ fontSize: 24, color: '#faad14', fontWeight: 'bold' }}>
                 {taskStats.noContactTasks}
               </div>
-              <div style={{ color: '#888' }}>❌ No Contact</div>
-            </div>
-          </Col>
-          <Col span={6}>
-            <div style={{ textAlign: 'center', padding: '12px', background: '#e6f7ff', borderRadius: 8 }}>
-              <div style={{ fontSize: 24, color: '#1890ff', fontWeight: 'bold' }}>
-                {taskStats.pendingTasks}
-              </div>
-              <div style={{ color: '#888' }}>⏳ Pending</div>
+              <div style={{ color: '#888', fontSize: 12 }}>📞 No Contact Tasks</div>
             </div>
           </Col>
         </Row>
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Total Exceptions = Disputed ({taskStats.disputedTasks}) + Escalated (
+            {taskStats.escalatedTasks}) ={' '}
+            <strong>{taskStats.disputedTasks + taskStats.escalatedTasks}</strong>
+          </Text>
+        </div>
       </Card>
 
-      {/* Recent Calls Table - From CALL_ATTEMPTS */}
+      {/* ============================================
+          SECTION 2: CALL-LEVEL SUMMARY
+          ============================================ */}
+      <Divider orientation="left">
+        <Space>
+          <PhoneOutlined />
+          <span>Call Activity Summary</span>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+            (Individual call attempts you made)
+          </Text>
+        </Space>
+      </Divider>
+
+      {/* Call KPI Cards */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total Calls"
+              value={callStats.totalCalls}
+              prefix={<PhoneOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Confirmed Calls"
+              value={callStats.confirmedCalls}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Disputed Calls"
+              value={callStats.disputedCalls}
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="No-Contact Calls"
+              value={callStats.noContactCalls}
+              prefix={<CloseCircleOutlined />}
+              valueStyle={{ color: '#faad14' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Call Result Breakdown */}
+      <Card style={{ marginBottom: 24 }}>
+        <Title level={5}>Call Result Breakdown</Title>
+        <Row gutter={16}>
+          <Col span={8}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#f6ffed',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 24, color: '#52c41a', fontWeight: 'bold' }}>
+                {callStats.confirmedCalls}
+              </div>
+              <div style={{ color: '#888', fontSize: 12 }}>✅ Confirmed Calls</div>
+            </div>
+          </Col>
+          <Col span={8}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#fff2f0',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 24, color: '#ff4d4f', fontWeight: 'bold' }}>
+                {callStats.disputedCalls}
+              </div>
+              <div style={{ color: '#888', fontSize: 12 }}>⚠️ Disputed Calls</div>
+            </div>
+          </Col>
+          <Col span={8}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px',
+                background: '#fffbe6',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 24, color: '#faad14', fontWeight: 'bold' }}>
+                {callStats.noContactCalls}
+              </div>
+              <div style={{ color: '#888', fontSize: 12 }}>❌ No-Contact Calls</div>
+            </div>
+          </Col>
+        </Row>
+        <div style={{ marginTop: 12, textAlign: 'center' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Total Calls = Confirmed ({callStats.confirmedCalls}) + Disputed (
+            {callStats.disputedCalls}) + No-Contact ({callStats.noContactCalls}) ={' '}
+            <strong>{callStats.totalCalls}</strong>
+          </Text>
+        </div>
+      </Card>
+
+      {/* ============================================
+          SECTION 3: RECENT CALL HISTORY
+          ============================================ */}
+      <Divider orientation="left">Recent Call History</Divider>
+
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Title level={5}>Recent Call History</Title>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+          }}
+        >
+          <Text strong>Individual call attempts</Text>
           <Space>
             <RangePicker
               onChange={(dates) => setDateRange(dates)}
@@ -364,8 +566,8 @@ const MyResults = () => {
                 <Text strong>No Call History</Text>
                 <br />
                 <Text type="secondary">
-                  {callAttempts.length === 0 
-                    ? 'You haven\'t made any calls yet. Start making calls to see your history here.'
+                  {callAttempts.length === 0
+                    ? "You haven't made any calls yet."
                     : 'No calls match your current filters.'}
                 </Text>
               </span>

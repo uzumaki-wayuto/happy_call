@@ -12,11 +12,145 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { trendApi } from '../../api/trendApi';
 import { attemptApi } from '../../api/attemptApi';
 import { useAuth } from '../../context/AuthContext';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+
+// ============================================
+// AGGREGATION: group raw attempts into buckets
+// ============================================
+const aggregateAttempts = (attempts, timeFrame) => {
+  if (!attempts || attempts.length === 0) return [];
+
+  // Anchor: use the LATEST attempt timestamp in the data (not "today")
+  // This way weekly/monthly always show the freshest 7/30 days of data,
+  // regardless of when the mock data was created.
+  const timestamps = attempts
+    .map((a) => a.createdAt || a.created_at || a.timestamp)
+    .filter(Boolean)
+    .map((t) => new Date(t).getTime())
+    .filter((t) => !isNaN(t));
+
+  const anchor = timestamps.length > 0 ? new Date(Math.max(...timestamps)) : new Date();
+
+  // Determine cutoff + bucket key formatter
+  let cutoff;
+  let keyFn;
+
+  if (timeFrame === 'daily') {
+    cutoff = new Date(anchor);
+    cutoff.setHours(0, 0, 0, 0);
+    keyFn = (d) => String(d.getHours()).padStart(2, '0') + ':00';
+  } else if (timeFrame === 'monthly') {
+    cutoff = new Date(anchor);
+    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setHours(0, 0, 0, 0);
+    keyFn = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+  } else {
+    // weekly
+    cutoff = new Date(anchor);
+    cutoff.setDate(cutoff.getDate() - 7);
+    cutoff.setHours(0, 0, 0, 0);
+    keyFn = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+  }
+
+  const map = {};
+
+  attempts.forEach((attempt) => {
+    const rawTime = attempt.createdAt || attempt.created_at || attempt.timestamp;
+    if (!rawTime) return;
+
+    const d = new Date(rawTime);
+    if (isNaN(d.getTime())) return;
+    if (d < cutoff) return;
+
+    const key = keyFn(d);
+
+    if (!map[key]) {
+      map[key] = { bucket: key, completed: 0, exceptions: 0, noContact: 0, total: 0 };
+    }
+
+    if (attempt.result === 'CONFIRMED') map[key].completed += 1;
+    else if (attempt.result === 'DISPUTED') map[key].exceptions += 1;
+    else if (attempt.result === 'NO_CONTACT') map[key].noContact += 1;
+
+    map[key].total += 1;
+  });
+
+  // ---- Fill gaps so the chart has continuous buckets ----
+  if (timeFrame === 'daily') {
+    for (let h = 0; h < 24; h++) {
+      const key = String(h).padStart(2, '0') + ':00';
+      if (!map[key]) {
+        map[key] = { bucket: key, completed: 0, exceptions: 0, noContact: 0, total: 0 };
+      }
+    }
+  } else {
+    const days = timeFrame === 'monthly' ? 30 : 7;
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(anchor);
+      d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+      if (!map[key]) {
+        map[key] = { bucket: key, completed: 0, exceptions: 0, noContact: 0, total: 0 };
+      }
+    }
+  }
+
+  return Object.values(map).sort((a, b) => a.bucket.localeCompare(b.bucket));
+};
+
+// ============================================
+// FORMATTING
+// ============================================
+const formatBucketLabel = (bucket, timeFrame) => {
+  if (!bucket) return '';
+
+  if (timeFrame === 'daily') {
+    // '14:00' → '14:00'
+    return bucket;
+  }
+
+  // bucket = 'YYYY-MM-DD'
+  const [y, m, d] = bucket.split('-').map(Number);
+  if (!y || !m || !d) return bucket;
+
+  if (timeFrame === 'weekly') {
+    const date = new Date(y, m - 1, d);
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+    return `${weekday} ${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  // monthly
+  return `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+const formatBucketTooltip = (bucket, timeFrame) => {
+  if (!bucket) return '';
+  if (timeFrame === 'daily') return `Hour: ${bucket}`;
+
+  const [y, m, d] = bucket.split('-').map(Number);
+  if (!y || !m || !d) return bucket;
+
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+// ============================================
 
 const AgentCallTrend = () => {
   const { user } = useAuth();
@@ -27,30 +161,34 @@ const AgentCallTrend = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState(null);
 
-  // ✅ Fetch agent trend data from API
+  // ============================================
+  // FETCH
+  // ============================================
   const fetchData = async () => {
     if (!user?.id) return;
     setError(null);
     setLoading(true);
     try {
-      // Try to get real data from attempts
       const response = await attemptApi.getMyAttempts(user.id, { limit: 1000 });
       const attempts = response.data || [];
 
-      // Process attempts into daily aggregates
-      const processedData = processAttemptsData(attempts, timeFrame);
+      const processedData = aggregateAttempts(attempts, timeFrame);
 
-      if (processedData.length > 0) {
+      // Guard: only show "no data" if truly nothing in range
+      const hasAnyData = processedData.some((b) => b.total > 0);
+
+      if (hasAnyData) {
         setData(processedData);
       } else {
+        setData([]);
         setError(
-          'No call data available for your account yet. Make some calls to see your performance!'
+          'No call data available for this period. Make some calls to see your performance!'
         );
       }
 
       setAgentName(user.fullName || 'Agent');
-    } catch (error) {
-      console.error('Error fetching agent trend:', error);
+    } catch (err) {
+      console.error('Error fetching agent trend:', err);
       setError('Failed to load your trend data. Please try again.');
       message.error('Failed to load your trend data');
       setAgentName(user.fullName || 'Agent');
@@ -59,87 +197,25 @@ const AgentCallTrend = () => {
     }
   };
 
-  // ✅ Process attempts into daily aggregates
-  const processAttemptsData = (attempts, timeframe) => {
-    if (!attempts || attempts.length === 0) return [];
-
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const dayMap = {};
-
-    // Initialize all days
-    days.forEach((day) => {
-      dayMap[day] = { completed: 0, exceptions: 0, noContact: 0, total: 0 };
-    });
-
-    // Get date range based on timeframe
-    const now = new Date();
-    let daysToShow = 7;
-    if (timeframe === 'monthly') daysToShow = 30;
-    if (timeframe === 'daily') daysToShow = 1;
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
-
-    // Group attempts by day
-    attempts.forEach((attempt) => {
-      if (!attempt.createdAt) return;
-      const date = new Date(attempt.createdAt);
-      if (date < cutoffDate) return;
-
-      const dayName = days[date.getDay()];
-      if (dayMap[dayName]) {
-        if (attempt.result === 'CONFIRMED') {
-          dayMap[dayName].completed += 1;
-        } else if (attempt.result === 'DISPUTED') {
-          dayMap[dayName].exceptions += 1;
-        } else if (attempt.result === 'NO_CONTACT') {
-          dayMap[dayName].noContact += 1;
-        }
-        dayMap[dayName].total += 1;
-      }
-    });
-
-    // Convert to array and order by day
-    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const result = dayOrder.map((day) => ({
-      day,
-      ...dayMap[day],
-    }));
-
-    // If no data, return empty
-    if (result.every((r) => r.total === 0)) return [];
-
-    return result;
-  };
-
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFrame, user, refreshKey]);
 
-  // Calculate personal stats
+  // ============================================
+  // STATS
+  // ============================================
   const stats = {
-    totalCompleted: data.reduce((sum, d) => sum + (d.completed || 0), 0),
-    totalExceptions: data.reduce((sum, d) => sum + (d.exceptions || 0), 0),
-    totalNoContact: data.reduce((sum, d) => sum + (d.noContact || 0), 0),
-    totalCalls: data.reduce(
-      (sum, d) => sum + (d.completed || 0) + (d.exceptions || 0) + (d.noContact || 0),
-      0
-    ),
-    avgDaily:
-      data.length > 0
-        ? Math.round(
-            data.reduce(
-              (sum, d) => sum + (d.completed || 0) + (d.exceptions || 0) + (d.noContact || 0),
-              0
-            ) / data.length
-          )
-        : 0,
-    bestDay: data.reduce((best, curr) => {
-      const bestTotal = (best.completed || 0) + (best.exceptions || 0) + (best.noContact || 0);
-      const currTotal = (curr.completed || 0) + (curr.exceptions || 0) + (curr.noContact || 0);
-      return currTotal > bestTotal ? curr : best;
-    }, data[0] || {}),
+    totalCompleted: data.reduce((s, d) => s + (d.completed || 0), 0),
+    totalExceptions: data.reduce((s, d) => s + (d.exceptions || 0), 0),
+    totalNoContact: data.reduce((s, d) => s + (d.noContact || 0), 0),
+    totalCalls: data.reduce((s, d) => s + (d.total || 0), 0),
   };
+
+  const bestBucket = data.reduce(
+    (best, curr) => ((curr.total || 0) > (best?.total || 0) ? curr : best),
+    null
+  );
 
   const colors = {
     completed: '#52c41a',
@@ -148,12 +224,38 @@ const AgentCallTrend = () => {
     total: '#1890ff',
   };
 
-  const xKey = 'day';
-
-  const handleRefresh = () => {
-    setRefreshKey((prev) => prev + 1);
+  // ============================================
+  // TOOLTIP
+  // ============================================
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    return (
+      <div
+        style={{
+          background: '#fff',
+          padding: 12,
+          borderRadius: 8,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          border: '1px solid #f0f0f0',
+        }}
+      >
+        <p style={{ fontWeight: 'bold', marginBottom: 4 }}>
+          {formatBucketTooltip(label, timeFrame)}
+        </p>
+        {payload.map((entry, idx) => (
+          <p key={idx} style={{ color: entry.color, margin: 2 }}>
+            {entry.name}: {entry.value}
+          </p>
+        ))}
+      </div>
+    );
   };
 
+  const handleRefresh = () => setRefreshKey((k) => k + 1);
+
+  // ============================================
+  // LOADING
+  // ============================================
   if (loading) {
     return (
       <Card
@@ -165,7 +267,12 @@ const AgentCallTrend = () => {
         }
       >
         <div
-          style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: 300,
+          }}
         >
           <Spin size="large" tip="Loading your trend data..." />
         </div>
@@ -173,6 +280,22 @@ const AgentCallTrend = () => {
     );
   }
 
+  // ============================================
+  // X-AXIS CONFIG
+  // ============================================
+  const xAxisProps = {
+    dataKey: 'bucket',
+    tickFormatter: (v) => formatBucketLabel(v, timeFrame),
+    interval: 'preserveStartEnd',
+    tick: { fontSize: 11 },
+    angle: timeFrame === 'monthly' ? -35 : 0,
+    textAnchor: timeFrame === 'monthly' ? 'end' : 'middle',
+    height: timeFrame === 'monthly' ? 60 : 30,
+  };
+
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <Card
       title={`📊 My Call Trend - ${agentName || 'Agent'}`}
@@ -200,7 +323,6 @@ const AgentCallTrend = () => {
             justifyContent: 'center',
             alignItems: 'center',
             height: 250,
-            color: '#999',
             padding: '40px 20px',
           }}
         >
@@ -218,52 +340,72 @@ const AgentCallTrend = () => {
         </div>
       ) : (
         <>
-          {/* Agent Summary Stats */}
+          {/* Summary Stats */}
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col span={6}>
               <div
-                style={{ textAlign: 'center', padding: 12, background: '#f6ffed', borderRadius: 8 }}
+                style={{
+                  textAlign: 'center',
+                  padding: 12,
+                  background: '#f6ffed',
+                  borderRadius: 8,
+                }}
               >
                 <div style={{ fontSize: 20, color: colors.completed, fontWeight: 'bold' }}>
                   {stats.totalCompleted}
                 </div>
-                <div style={{ color: '#888', fontSize: 12 }}>✅ Completed</div>
+                <div style={{ color: '#888', fontSize: 12 }}>✅ Confirmed Calls</div>
               </div>
             </Col>
             <Col span={6}>
               <div
-                style={{ textAlign: 'center', padding: 12, background: '#fff1f0', borderRadius: 8 }}
+                style={{
+                  textAlign: 'center',
+                  padding: 12,
+                  background: '#fff1f0',
+                  borderRadius: 8,
+                }}
               >
                 <div style={{ fontSize: 20, color: colors.exceptions, fontWeight: 'bold' }}>
                   {stats.totalExceptions}
                 </div>
-                <div style={{ color: '#888', fontSize: 12 }}>🔴 Disputed</div>
+                <div style={{ color: '#888', fontSize: 12 }}>🔴 Disputed Calls</div>
               </div>
             </Col>
             <Col span={6}>
               <div
-                style={{ textAlign: 'center', padding: 12, background: '#fffbe6', borderRadius: 8 }}
+                style={{
+                  textAlign: 'center',
+                  padding: 12,
+                  background: '#fffbe6',
+                  borderRadius: 8,
+                }}
               >
                 <div style={{ fontSize: 20, color: colors.noContact, fontWeight: 'bold' }}>
                   {stats.totalNoContact}
                 </div>
-                <div style={{ color: '#888', fontSize: 12 }}>📞 No Contact</div>
+                <div style={{ color: '#888', fontSize: 12 }}>📞 No-Contact Calls</div>
               </div>
             </Col>
             <Col span={6}>
               <div
-                style={{ textAlign: 'center', padding: 12, background: '#e6f7ff', borderRadius: 8 }}
+                style={{
+                  textAlign: 'center',
+                  padding: 12,
+                  background: '#e6f7ff',
+                  borderRadius: 8,
+                }}
               >
                 <div style={{ fontSize: 20, color: colors.total, fontWeight: 'bold' }}>
                   {stats.totalCalls}
                 </div>
-                <div style={{ color: '#888', fontSize: 12 }}>📞 Total Calls</div>
+                <div style={{ color: '#888', fontSize: 12 }}>📊 Total Calls</div>
               </div>
             </Col>
           </Row>
 
-          {/* Best Day */}
-          {stats.bestDay && stats.bestDay[xKey] && (
+          {/* Best Bucket */}
+          {bestBucket && bestBucket.bucket && bestBucket.total > 0 && (
             <div
               style={{
                 marginBottom: 16,
@@ -274,11 +416,9 @@ const AgentCallTrend = () => {
               }}
             >
               <Text>
-                🏆 Best Day: <strong>{stats.bestDay[xKey]}</strong> with{' '}
-                {(stats.bestDay.completed || 0) +
-                  (stats.bestDay.exceptions || 0) +
-                  (stats.bestDay.noContact || 0)}{' '}
-                calls
+                🏆 Best {timeFrame === 'daily' ? 'Hour' : 'Day'}:{' '}
+                <strong>{formatBucketLabel(bestBucket.bucket, timeFrame)}</strong> with{' '}
+                {bestBucket.total} calls
               </Text>
             </div>
           )}
@@ -287,30 +427,30 @@ const AgentCallTrend = () => {
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xKey} />
+              <XAxis {...xAxisProps} />
               <YAxis />
-              <Tooltip />
+              <Tooltip content={<CustomTooltip />} />
               <Legend />
               <Line
                 type="monotone"
                 dataKey="completed"
                 stroke={colors.completed}
                 strokeWidth={2}
-                name="Completed"
+                name="Confirmed Calls"
               />
               <Line
                 type="monotone"
                 dataKey="exceptions"
                 stroke={colors.exceptions}
                 strokeWidth={2}
-                name="Disputed"
+                name="Disputed Calls"
               />
               <Line
                 type="monotone"
                 dataKey="noContact"
                 stroke={colors.noContact}
                 strokeWidth={2}
-                name="No Contact"
+                name="No-Contact Calls"
               />
             </LineChart>
           </ResponsiveContainer>
